@@ -114,13 +114,13 @@ def real_data_loading(data_name, seq_len):
     """Load and preprocess real-world datasets.
 
     Args:
-      - data_name: stock or energy
+      - data_name: stock, energy or Other datasets
       - seq_len: sequence length
 
     Returns:
       - datasets: preprocessed datasets.
     """
-    assert data_name in ['stock', 'energy', 'metro']
+    assert data_name in ['stock', 'energy', 'metro', 'EV']
 
     if data_name == 'stock':
         ori_data = np.loadtxt('./datasets/stock_data.csv', delimiter=",", skiprows=1)
@@ -128,24 +128,44 @@ def real_data_loading(data_name, seq_len):
         ori_data = np.loadtxt('./datasets/energy_data.csv', delimiter=",", skiprows=1)
     elif data_name == 'metro':
         ori_data = np.loadtxt('./datasets/metro_data.csv', delimiter=",", skiprows=1)
+    elif data_name == 'EV':
+        ori_data = np.loadtxt('./datasets/EV_data.csv', delimiter=",", skiprows=1)
 
-    # Flip the datasets to make chronological datasets
-    ori_data = ori_data[::-1]
-    # Normalize the datasets
-    ori_data = MinMaxScaler(ori_data)
+    if data_name == 'EV':
+        # Do NOT flip the dataset
+        # Normalize the dataset
+        ori_data = MinMaxScaler(ori_data)
 
-    # Preprocess the datasets
-    temp_data = []
-    # Cut datasets by sequence length
-    for i in range(0, len(ori_data) - seq_len):
-        _x = ori_data[i:i + seq_len]
-        temp_data.append(_x)
+        # Preprocess the dataset using the sliding window
+        temp_data = []
+        # Cut datasets by sequence length
+        for i in range(0, len(ori_data) - seq_len):
+            _x = ori_data[i:i + seq_len]
+            temp_data.append(_x)
 
-    # Mix the datasets (to make it similar to i.i.d)
-    idx = np.random.permutation(len(temp_data))
-    data = []
-    for i in range(len(temp_data)):
-        data.append(temp_data[idx[i]])
+        # Do NOT mix the dataset
+        data = temp_data
+
+    else:
+        #NOT EV dataset
+
+        # Flip the datasets to make chronological datasets
+        ori_data = ori_data[::-1]
+        # Normalize the datasets
+        ori_data = MinMaxScaler(ori_data)
+
+        # Preprocess the datasets
+        temp_data = []
+        # Cut datasets by sequence length
+        for i in range(0, len(ori_data) - seq_len):
+            _x = ori_data[i:i + seq_len]
+            temp_data.append(_x)
+
+        # Mix the datasets (to make it similar to i.i.d)
+        idx = np.random.permutation(len(temp_data))
+        data = []
+        for i in range(len(temp_data)):
+            data.append(temp_data[idx[i]])
 
     return data
 
