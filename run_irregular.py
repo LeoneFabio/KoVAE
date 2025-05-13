@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.kovae import KoVAE
 import torch.optim as optim
 import logging
-from utils.utils_data2 import TimeDataset_irregular
+from utils.utils_data import TimeDataset_irregular
 
 
 def define_args():
