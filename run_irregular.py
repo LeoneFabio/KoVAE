@@ -176,6 +176,18 @@ def main(args):
 
     logging.info("Data generation is complete")
 
+    # save generated data in torch format in the directory ./Generated_data if not exist
+    output_dir = './Generated_data'
+    file_path = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    if not os.path.exists(file_path):
+        torch.save(torch.from_numpy(generated_data), file_path)
+    else:
+        logging.info('Generated data already exists, skipping saving.')
+
     ori_data = list()
     for data in train_loader:
         ori_data.append(data['original_data'].detach().cpu().numpy())
