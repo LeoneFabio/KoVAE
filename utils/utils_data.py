@@ -138,12 +138,13 @@ def real_data_loading(data_name, seq_len):
 
         # Preprocess the dataset using the sliding window
         temp_data = []
-        # Cut datasets by sequence length
+        # Cut dataset by sequence length
         for i in range(0, len(ori_data) - seq_len):
             _x = ori_data[i:i + seq_len]
             temp_data.append(_x)
 
         # Do NOT mix the dataset
+        # data is the variable to return
         data = temp_data
 
     else:
