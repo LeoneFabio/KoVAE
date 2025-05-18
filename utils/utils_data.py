@@ -181,7 +181,7 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
 
 
 class TimeDataset_irregular(torch.utils.data.Dataset):
-    def __init__(self, seq_len, data_name, missing_rate=0.0):
+    def __init__(self, seq_len, data_name, missing_rate=0.0, return_minmax=False):
         SEED = 56789
         base_loc = PROJECT_DIR / 'datasets'
         loc = PROJECT_DIR / 'datasets' / (data_name + str(missing_rate))
@@ -200,46 +200,95 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             if not os.path.exists(loc):
                 os.mkdir(loc)
 
-            if data_name in ['stock', 'energy']:
+            if data_name == 'EV':
+                # EV dataset
+
                 data = np.loadtxt(f'./datasets/{data_name}_data.csv', delimiter=",", skiprows=1)
-                data = data[::-1]
-                norm_data= MinMaxScaler(data)
+                # Do NOT flip the dataset
+                # Normalize the dataset
+                norm_data, min_data, max_data = MinMaxScaler(data, return_minmax=True)
+                if return_minmax:
+                    self.min_data = min_data
+                    self.max_data = max_data
+
                 total_length = len(norm_data)
                 time = np.array(range(total_length)).reshape(-1, 1)
-            elif data_name == 'mujoco':
-                tensors = load_data(loc)
-                time = tensors['train_X'][:, :, :1].cpu().numpy()
-                data = tensors['train_X'][:, :, 1:].reshape(-1, 14).cpu().numpy()
-                norm_data = MinMaxScaler(data)
-                norm_data = norm_data.reshape(4620, seq_len, 14)
-            elif data_name == 'sine':
-                norm_data = sine_data_generation(no=10000, seq_len=24, dim=5)
+                
 
-            self.original_sample = []
-            ori_seq_data = []
+                self.original_sample = []
+                ori_seq_data = []
 
-            for i in range(len(norm_data) - seq_len + 1):
-                x = norm_data[i: i + seq_len].copy()
-                ori_seq_data.append(x)
-            idx = torch.randperm(len(ori_seq_data))
-            for i in range(len(ori_seq_data)):
-                self.original_sample.append(ori_seq_data[idx[i]])
-            orig_samples_np = np.array(self.original_sample)
-            self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])
+                for i in range(len(norm_data) - seq_len + 1):
+                    x = norm_data[i: i + seq_len].copy()
+                    ori_seq_data.append(x)
 
-            generator = torch.Generator().manual_seed(SEED)
-            removed_points = torch.randperm(norm_data.shape[0], generator=generator)[
-                             :int(norm_data.shape[0] * missing_rate)].sort().values
-            norm_data[removed_points] = float('nan')
-            norm_data = np.concatenate((norm_data, time), axis=1)
-            seq_data = []
-            for i in range(len(norm_data) - seq_len + 1):
-                x = norm_data[i: i + seq_len]
-                seq_data.append(x)
-            self.samples = []
-            for i in range(len(seq_data)):
-                self.samples.append(seq_data[idx[i]])
+                self.original_sample = ori_seq_data.copy()
+                orig_samples_np = np.array(self.original_sample)
+                self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])
 
+                # Do NOT mix the dataset
+                '''idx = torch.randperm(len(ori_seq_data))
+                for i in range(len(ori_seq_data)):
+                    self.original_sample.append(ori_seq_data[idx[i]])
+                orig_samples_np = np.array(self.original_sample)
+                self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])'''
+
+                generator = torch.Generator().manual_seed(SEED)
+                removed_points = torch.randperm(norm_data.shape[0], generator=generator)[
+                                :int(norm_data.shape[0] * missing_rate)].sort().values
+                norm_data[removed_points] = float('nan')
+                norm_data = np.concatenate((norm_data, time), axis=1)
+                seq_data = []
+                for i in range(len(norm_data) - seq_len + 1):
+                    x = norm_data[i: i + seq_len]
+                    seq_data.append(x)
+                self.samples = seq_data.copy()
+                '''for i in range(len(seq_data)):
+                    self.samples.append(seq_data[idx[i]])'''
+            else:
+                # NOT EV dataset
+                
+                if data_name in ['stock', 'energy']:
+                    data = np.loadtxt(f'./datasets/{data_name}_data.csv', delimiter=",", skiprows=1)
+                    data = data[::-1]
+                    norm_data= MinMaxScaler(data)
+                    total_length = len(norm_data)
+                    time = np.array(range(total_length)).reshape(-1, 1)
+                elif data_name == 'mujoco':
+                    tensors = load_data(loc)
+                    time = tensors['train_X'][:, :, :1].cpu().numpy()
+                    data = tensors['train_X'][:, :, 1:].reshape(-1, 14).cpu().numpy()
+                    norm_data = MinMaxScaler(data)
+                    norm_data = norm_data.reshape(4620, seq_len, 14)
+                elif data_name == 'sine':
+                    norm_data = sine_data_generation(no=10000, seq_len=24, dim=5)
+
+                self.original_sample = []
+                ori_seq_data = []
+
+                for i in range(len(norm_data) - seq_len + 1):
+                    x = norm_data[i: i + seq_len].copy()
+                    ori_seq_data.append(x)
+                idx = torch.randperm(len(ori_seq_data))
+                for i in range(len(ori_seq_data)):
+                    self.original_sample.append(ori_seq_data[idx[i]])
+                orig_samples_np = np.array(self.original_sample)
+                self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])
+
+                generator = torch.Generator().manual_seed(SEED)
+                removed_points = torch.randperm(norm_data.shape[0], generator=generator)[
+                                :int(norm_data.shape[0] * missing_rate)].sort().values
+                norm_data[removed_points] = float('nan')
+                norm_data = np.concatenate((norm_data, time), axis=1)
+                seq_data = []
+                for i in range(len(norm_data) - seq_len + 1):
+                    x = norm_data[i: i + seq_len]
+                    seq_data.append(x)
+                self.samples = []
+                for i in range(len(seq_data)):
+                    self.samples.append(seq_data[idx[i]])
+
+            #From here, the data is ready (either EV or not)
             self.samples = np.array(self.samples)
 
             norm_data_tensor = torch.Tensor(self.samples[:, :, :-1]).float().cuda()
@@ -275,6 +324,25 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.samples)
 
+def create_timeDataset_irregular(data_name, seq_len, missing_rate=0.0, return_minmax=False):
+    """Create time-series datasets.
+
+    Args:
+      - data_name: stock, energy or Other datasets
+      - seq_len: sequence length
+      - missing_rate: the rate of missing values
+      - return_minmax: whether to return min/max values useful for de-normalize
+
+    Returns:
+      - dataset: preprocessed dataset
+      - min_data: min values of the dataset
+      - max_data: max values of the dataset
+    """
+    dataset = TimeDataset_irregular(seq_len, data_name, missing_rate=missing_rate, return_minmax=return_minmax)    
+    if return_minmax:
+        return dataset, dataset.min_data, dataset.max_data
+    else:
+        return dataset
 
 def load_data(dir):
     tensors = {}
