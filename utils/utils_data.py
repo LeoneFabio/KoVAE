@@ -23,7 +23,7 @@ def to_tensor(data):
     return torch.from_numpy(data).float()
 
 
-def MinMaxScaler(data):
+def MinMaxScaler(data, return_minmax=False):
     """Min Max normalizer.
 
     Args:
@@ -32,9 +32,13 @@ def MinMaxScaler(data):
     Returns:
       - norm_data: normalized datasets
     """
-    numerator = data - np.min(data, 0)
-    denominator = np.max(data, 0) - np.min(data, 0)
+    min = np.min(data, 0)
+    max = np.max(data, 0)
+    numerator = data - min
+    denominator = max - min
     norm_data = numerator / (denominator + 1e-7)
+    if return_minmax:
+        return norm_data, min, max
     return norm_data
 
 
@@ -110,7 +114,7 @@ def sine_data_generation(no, seq_len, dim):
     return data
 
 
-def real_data_loading(data_name, seq_len):
+def real_data_loading(data_name, seq_len, return_minmax=False):
     """Load and preprocess real-world datasets.
 
     Args:
@@ -134,7 +138,7 @@ def real_data_loading(data_name, seq_len):
     if data_name == 'EV':
         # Do NOT flip the dataset
         # Normalize the dataset
-        ori_data = MinMaxScaler(ori_data)
+        ori_data, min_data, max_data = MinMaxScaler(ori_data, return_minmax=True)
 
         # Preprocess the dataset using the sliding window
         temp_data = []
@@ -167,7 +171,9 @@ def real_data_loading(data_name, seq_len):
         data = []
         for i in range(len(temp_data)):
             data.append(temp_data[idx[i]])
-
+    if return_minmax:
+        # Return the normalized datasets and the min/max values
+        return data, min_data, max_data
     return data
 
 
@@ -194,7 +200,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             if data_name in ['stock', 'energy']:
                 data = np.loadtxt(f'./datasets/{data_name}_data.csv', delimiter=",", skiprows=1)
                 data = data[::-1]
-                norm_data = MinMaxScaler(data)
+                norm_data= MinMaxScaler(data)
                 total_length = len(norm_data)
                 time = np.array(range(total_length)).reshape(-1, 1)
             elif data_name == 'mujoco':

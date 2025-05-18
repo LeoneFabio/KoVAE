@@ -91,7 +91,7 @@ def main(args):
         args.inp_dim = ori_data.shape[-1]
         train_set = Data.TensorDataset(ori_data)
     else:
-        ori_data = real_data_loading(args.dataset, args.seq_len)
+        ori_data, min_data, max_data = real_data_loading(args.dataset, args.seq_len, return_minmax=True)
         ori_data = torch.Tensor(np.array(ori_data))
         args.inp_dim = ori_data.shape[-1]
         train_set = Data.TensorDataset(ori_data)
