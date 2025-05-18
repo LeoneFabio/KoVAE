@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.kovae import KoVAE
 import torch.optim as optim
 import logging
-from utils.utils_data import real_data_loading, sine_data_generation
+from utils.utils_data import real_data_loading, sine_data_generation, inverse_MinMaxScaler
 from utils.utils import agg_losses, log_losses, set_seed_device
 
 
@@ -159,6 +159,9 @@ def main(args):
 
     logging.info("Data generation is complete")
 
+    # De-normalize the generated data
+    generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
+
     # save generated data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
     file_path = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
@@ -167,7 +170,7 @@ def main(args):
         os.makedirs(output_dir)
 
     if not os.path.exists(file_path):
-        torch.save(torch.from_numpy(generated_data), file_path)
+        torch.save(torch.from_numpy(generated_data_denormalized), file_path)
     else:
         logging.info('Generated data already exists, skipping saving.')
 

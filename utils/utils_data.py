@@ -41,6 +41,9 @@ def MinMaxScaler(data, return_minmax=False):
         return norm_data, min, max
     return norm_data
 
+def inverse_MinMaxScaler(norm_data, min_data, max_data):
+    return norm_data * (max_data - min_data + 1e-7) + min_data
+
 
 def pendulum_nonlinear(num_points, noise, theta=2.4):
     from matplotlib import pylab as plt
