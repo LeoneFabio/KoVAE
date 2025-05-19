@@ -131,26 +131,6 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
       - datasets: preprocessed datasets.
     """
     assert data_name in ['stock', 'energy', 'metro', 'EV']
-
-    '''if data_name == 'stock':
-        ori_data = np.loadtxt('./datasets/stock_data.csv', delimiter=",", skiprows=1)
-    elif data_name == 'energy':
-        ori_data = np.loadtxt('./datasets/energy_data.csv', delimiter=",", skiprows=1)
-    elif data_name == 'metro':
-        ori_data = np.loadtxt('./datasets/metro_data.csv', delimiter=",", skiprows=1)
-    elif data_name == 'EV':
-        ori_data = np.loadtxt('./datasets/EV_data.csv', delimiter=",", skiprows=1)
-
-    # save features (columns' names)  in the directory ./Generated_data if not exist
-    output_dir = './Generated_data'
-    file_path = os.path.join(output_dir, f'{data_name}_features.txt')
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    if not os.path.exists(file_path):
-        if data_name == 'EV':
-            # save features'''
     
     if data_name == 'stock':
         csv_path = './datasets/stock_data.csv'
@@ -172,8 +152,7 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
     file_path = os.path.join(output_dir, f'{data_name}_features.json')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    if not os.path.exists(file_path):
-        with open(file_path, 'w') as f:
+    with open(file_path, 'w') as f:
             json.dump(header, f)
 
     if data_name == 'EV':
@@ -261,9 +240,8 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 file_path = os.path.join(output_dir, f'{data_name}_features.json')
                 if not os.path.exists(output_dir):
                     os.makedirs(output_dir)
-                if not os.path.exists(file_path):
-                    with open(file_path, 'w') as f:
-                        json.dump(header, f)
+                with open(file_path, 'w') as f:
+                    json.dump(header, f)
                 
                 # Do NOT flip the dataset
                 # Normalize the dataset
@@ -322,9 +300,8 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                     file_path = os.path.join(output_dir, f'{data_name}_features.json')
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)
-                    if not os.path.exists(file_path):
-                        with open(file_path, 'w') as f:
-                            json.dump(header, f)
+                    with open(file_path, 'w') as f:
+                        json.dump(header, f)
                     
                     data = data[::-1]
                     norm_data= MinMaxScaler(data)

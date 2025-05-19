@@ -173,13 +173,11 @@ def main(args):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    if not os.path.exists(file_path):
-        if args.dataset == 'EV':
-            torch.save(torch.from_numpy(generated_data_denormalized), file_path)
-        else:
-            torch.save(torch.from_numpy(generated_data), file_path)
+    
+    if args.dataset == 'EV':
+        torch.save(torch.from_numpy(generated_data_denormalized), file_path)
     else:
-        logging.info('Generated data already exists, skipping saving.')
+        torch.save(torch.from_numpy(generated_data), file_path)
 
     ori_data = list()
     for data in train_loader:
