@@ -103,8 +103,10 @@ def main(args):
 
     args.log_dir = '%s/%s/%s' % (args.log_dir, args.dataset, name)
 
-    # data parameters
-    dataset, min_data, max_data = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value, return_minmax=True)
+    if args.dataset == 'EV':
+        dataset, min_data, max_data = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value, return_minmax=True)
+    else:
+        dataset = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value)
 
     def seed_worker(worker_id):
         worker_seed = torch.initial_seed() % 2 ** 32
