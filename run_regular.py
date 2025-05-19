@@ -91,7 +91,10 @@ def main(args):
         args.inp_dim = ori_data.shape[-1]
         train_set = Data.TensorDataset(ori_data)
     else:
-        ori_data, min_data, max_data = real_data_loading(args.dataset, args.seq_len, return_minmax=True)
+        if args.dataset == 'EV':
+            ori_data, min_data, max_data = real_data_loading(args.dataset, args.seq_len, return_minmax=True)
+        else:
+            ori_data= real_data_loading(args.dataset, args.seq_len)
         ori_data = torch.Tensor(np.array(ori_data))
         args.inp_dim = ori_data.shape[-1]
         train_set = Data.TensorDataset(ori_data)
@@ -159,8 +162,9 @@ def main(args):
 
     logging.info("Data generation is complete")
 
-    # De-normalize the generated data
-    generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
+    if args.dataset == 'EV':
+        # De-normalize the generated data
+        generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
 
     # save generated data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
@@ -170,7 +174,10 @@ def main(args):
         os.makedirs(output_dir)
 
     if not os.path.exists(file_path):
-        torch.save(torch.from_numpy(generated_data_denormalized), file_path)
+        if args.dataset == 'EV':
+            torch.save(torch.from_numpy(generated_data_denormalized), file_path)
+        else:
+            torch.save(torch.from_numpy(generated_data), file_path)
     else:
         logging.info('Generated data already exists, skipping saving.')
 

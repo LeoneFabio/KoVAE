@@ -15,6 +15,8 @@ import torch
 import controldiffeq
 import pathlib
 from utils.utils import device_available
+import csv
+import json
 
 
 PROJECT_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -130,7 +132,7 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
     """
     assert data_name in ['stock', 'energy', 'metro', 'EV']
 
-    if data_name == 'stock':
+    '''if data_name == 'stock':
         ori_data = np.loadtxt('./datasets/stock_data.csv', delimiter=",", skiprows=1)
     elif data_name == 'energy':
         ori_data = np.loadtxt('./datasets/energy_data.csv', delimiter=",", skiprows=1)
@@ -138,6 +140,41 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
         ori_data = np.loadtxt('./datasets/metro_data.csv', delimiter=",", skiprows=1)
     elif data_name == 'EV':
         ori_data = np.loadtxt('./datasets/EV_data.csv', delimiter=",", skiprows=1)
+
+    # save features (columns' names)  in the directory ./Generated_data if not exist
+    output_dir = './Generated_data'
+    file_path = os.path.join(output_dir, f'{data_name}_features.txt')
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    if not os.path.exists(file_path):
+        if data_name == 'EV':
+            # save features'''
+    
+    if data_name == 'stock':
+        csv_path = './datasets/stock_data.csv'
+    elif data_name == 'energy':
+        csv_path = './datasets/energy_data.csv'
+    elif data_name == 'metro':
+        csv_path = './datasets/metro_data.csv'
+    elif data_name == 'EV':
+        csv_path = './datasets/EV_data.csv'
+
+    # Read the full CSV, header included
+    with open(csv_path, 'r') as f:
+        reader = csv.reader(f)
+        header = next(reader)  # First row = feature names
+        ori_data = np.loadtxt(f, delimiter=",")
+
+    # Save features (columns' names) in the directory ./Output_info if not exist
+    output_dir = './Output_info'
+    file_path = os.path.join(output_dir, f'{data_name}_features.json')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    if not os.path.exists(file_path):
+        with open(file_path, 'w') as f:
+            json.dump(header, f)
 
     if data_name == 'EV':
         # Do NOT flip the dataset
@@ -175,6 +212,7 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
         data = []
         for i in range(len(temp_data)):
             data.append(temp_data[idx[i]])
+
     if return_minmax:
         # Return the normalized datasets and the min/max values
         return data, min_data, max_data
@@ -211,7 +249,22 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             if data_name == 'EV':
                 # EV dataset
 
-                data = np.loadtxt(f'./datasets/{data_name}_data.csv', delimiter=",", skiprows=1)
+                csv_path = f'./datasets/{data_name}_data.csv'
+                # Read the full CSV, header included
+                with open(csv_path, 'r') as f:
+                    reader = csv.reader(f)
+                    header = next(reader)  # First row = feature names
+                    data = np.loadtxt(f, delimiter=",")
+
+                # Save features (columns' names) in the directory ./Output_info if not exist
+                output_dir = './Output_info'
+                file_path = os.path.join(output_dir, f'{data_name}_features.json')
+                if not os.path.exists(output_dir):
+                    os.makedirs(output_dir)
+                if not os.path.exists(file_path):
+                    with open(file_path, 'w') as f:
+                        json.dump(header, f)
+                
                 # Do NOT flip the dataset
                 # Normalize the dataset
                 norm_data, min_data, max_data = MinMaxScaler(data, return_minmax=True)
@@ -257,7 +310,22 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 # NOT EV dataset
                 
                 if data_name in ['stock', 'energy']:
-                    data = np.loadtxt(f'./datasets/{data_name}_data.csv', delimiter=",", skiprows=1)
+                    csv_path = f'./datasets/{data_name}_data.csv'
+                    # Read the full CSV, header included
+                    with open(csv_path, 'r') as f:
+                        reader = csv.reader(f)
+                        header = next(reader)  # First row = feature names
+                        data = np.loadtxt(f, delimiter=",")
+
+                    # Save features (columns' names) in the directory ./Output_info if not exist
+                    output_dir = './Output_info'
+                    file_path = os.path.join(output_dir, f'{data_name}_features.json')
+                    if not os.path.exists(output_dir):
+                        os.makedirs(output_dir)
+                    if not os.path.exists(file_path):
+                        with open(file_path, 'w') as f:
+                            json.dump(header, f)
+                    
                     data = data[::-1]
                     norm_data= MinMaxScaler(data)
                     total_length = len(norm_data)
