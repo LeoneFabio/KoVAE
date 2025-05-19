@@ -4,6 +4,8 @@ import torch.nn.functional as F
 import models.losses as losses
 from models.neuralCDE import NeuralCDE
 from models.modules import FinalTanh
+from utils.utils import device_available
+
 
 
 def reparameterize(mean, logvar, random_sampling=True):
@@ -228,8 +230,9 @@ class KoVAE(nn.Module):
         z_logvars, z_means, z_out = self.zeros_init(batch_size, seq_len)
 
         # initialize arbitrary input (zeros) and hidden states.
-        z_t = torch.zeros(batch_size, self.z_dim).cuda()
-        h_t = torch.zeros(batch_size, self.hidden_dim).cuda()
+        device = device_available()
+        z_t = torch.zeros(batch_size, self.z_dim).to(device)
+        h_t = torch.zeros(batch_size, self.hidden_dim).to(device)
 
         for i in range(seq_len):
             h_t = self.z_prior_gru(z_t, h_t)
@@ -245,7 +248,8 @@ class KoVAE(nn.Module):
         return z_means, z_logvars, z_out
 
     def zeros_init(self, batch_size, seq_len):
-        z_out = torch.zeros(batch_size, seq_len, self.z_dim).cuda()
-        z_means = torch.zeros(batch_size, seq_len, self.z_dim).cuda()
-        z_logvars = torch.zeros(batch_size, seq_len, self.z_dim).cuda()
+        device = device_available()
+        z_out = torch.zeros(batch_size, seq_len, self.z_dim).to(device)
+        z_means = torch.zeros(batch_size, seq_len, self.z_dim).to(device)
+        z_logvars = torch.zeros(batch_size, seq_len, self.z_dim).to(device)
         return z_logvars, z_means, z_out

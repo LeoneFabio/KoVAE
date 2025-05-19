@@ -141,3 +141,11 @@ def log_losses(epoch, losses_tr, names):
 
     logging.info('#'*30)
     return losses_avg_tr[0]
+
+def device_available():
+    """Get a gpu if available."""
+    if torch.cuda.device_count() > 0:
+        device = torch.device('cuda')
+    else:
+        device = torch.device('cpu')
+    return device

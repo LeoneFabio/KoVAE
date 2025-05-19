@@ -14,6 +14,7 @@ import os
 import torch
 import controldiffeq
 import pathlib
+from utils.utils import device_available
 
 
 PROJECT_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -200,7 +201,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 self.max_data = tensors.get('max_data')
                 if self.min_data is None or self.max_data is None:
                     print(f"[Warning] min/max data not found in cache for {data_name}.")
-                    
+
         else:  # preprocess data according to missing rate
             if not os.path.exists(base_loc):
                 os.mkdir(base_loc)
@@ -298,9 +299,10 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             #From here, the data is ready (either EV or not)
             self.samples = np.array(self.samples)
 
-            norm_data_tensor = torch.Tensor(self.samples[:, :, :-1]).float().cuda()
+            device = device_available()
+            norm_data_tensor = torch.Tensor(self.samples[:, :, :-1]).float().to(device)
 
-            time = torch.FloatTensor(list(range(norm_data_tensor.size(1)))).cuda()
+            time = torch.FloatTensor(list(range(norm_data_tensor.size(1)))).to(device)
             self.last = torch.Tensor(self.samples[:, :, -1][:, -1]).float()
             self.train_coeffs = controldiffeq.natural_cubic_spline_coeffs(time, norm_data_tensor)
             self.original_sample = torch.tensor(self.original_sample)
