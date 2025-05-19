@@ -196,11 +196,11 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             self.samples = np.array(self.samples)
             self.size = len(self.samples)
 
-            if return_minmax:
+            '''if return_minmax:
                 self.min_data = tensors.get('min_data')
                 self.max_data = tensors.get('max_data')
                 if self.min_data is None or self.max_data is None:
-                    print(f"[Warning] min/max data not found in cache for {data_name}.")
+                    print(f"[Warning] min/max data not found in cache for {data_name}.")'''
 
         else:  # preprocess data according to missing rate
             if not os.path.exists(base_loc):
@@ -314,8 +314,6 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                       train_b=self.train_coeffs[1],
                       train_c=self.train_coeffs[2],
                       train_d=self.train_coeffs[3],
-                      min_data=self.min_data,
-                      max_data=self.max_data,
                       )
 
             self.original_sample = np.array(self.original_sample)
