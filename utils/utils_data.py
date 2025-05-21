@@ -17,6 +17,7 @@ import pathlib
 from utils.utils import device_available
 import csv
 import json
+import pandas as pd
 
 
 PROJECT_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -197,6 +198,86 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
         return data, min_data, max_data
     return data
 
+def preprocess_dataset(path, data_name):
+
+    # Load CSV
+    df = pd.read_csv(path, sep=',')
+
+    # Drop the first column (vin -> Vehicle's identifier)
+    df = df.iloc[:, 1:]
+
+    # Convert timestamps to datetime
+    df['timestamp'] = pd.to_datetime(df['timestamp'], dayfirst=True, errors='coerce')
+    df['end_time'] = pd.to_datetime(df['end_time'], dayfirst=True, errors='coerce')
+
+    # Compute event duration in minutes
+    df['duration_minutes'] = (df['end_time'] - df['timestamp']).dt.total_seconds() / 60
+
+    # Drop original time columns
+    df = df.drop(columns=['timestamp', 'end_time'])
+    
+    ''' Label encoding 
+    
+    # Encode 'event': trip → 0, charge → 1
+    event_mapping = {'trip': 0, 'charge': 1}
+    df['event'] = df['event'].map(event_mapping)
+
+    # Encode 'charge_mode': NaN → 0, '240' → 1, 'DC Charging' → 2
+    def encode_charge_mode(val):
+        if pd.isna(val):
+            return 0
+        elif str(val).strip() == '240':
+            return 1
+        elif 'DC' in str(val):
+            return 2
+        else:
+            return 0  # fallback for unexpected values
+
+    df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)'''
+    
+    # Normalize/clean categorical columns
+    df['event'] = df['event'].str.strip().str.lower()
+    df['charge_mode'] = df['charge_mode'].astype(str).str.strip()
+
+    # One-hot encode 'event' (trip, charge)
+    df = pd.get_dummies(df, columns=['event'], prefix='event')
+
+    # Map 'charge_mode' to categorical labels first
+    def map_charge_mode(val):
+        if pd.isna(val) or val.lower() == 'nan':
+            return 'none'
+        elif val == '240':
+            return '240'
+        elif 'DC' in val.upper():
+            return 'dc'
+        else:
+            return 'none'  # fallback for unexpected values
+
+    df['charge_mode'] = df['charge_mode'].apply(map_charge_mode)
+
+    # One-hot encode 'charge_mode' (none, 240, dc)
+    df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')
+    
+    ######################## HANDLE MISSING VALUES ######################################
+    # Fill any remaining NaNs (e.g., missing soc values) 
+    df = df.fillna(method='ffill')
+    ######################## KEEP STUDYING THE BEST OPTION ##############################
+    
+    # Ensure all values are float-compatible (0/1 instead of True/False)
+    df = df.astype(float)
+
+    # Save the processed dataset
+    output_dir = './Output_info'
+    file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    df.to_csv(file_path, index=False)
+
+    print(f'Preprocessing complete. Output saved to {file_path}')
+    
+    return file_path
+
+
 
 class TimeDataset_irregular(torch.utils.data.Dataset):
     def __init__(self, seq_len, data_name, missing_rate=0.0, return_minmax=False):
@@ -213,26 +294,31 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             self.samples = np.array(self.samples)
             self.size = len(self.samples)
 
-            '''if return_minmax:
+            if return_minmax:
                 self.min_data = tensors.get('min_data')
                 self.max_data = tensors.get('max_data')
                 if self.min_data is None or self.max_data is None:
-                    print(f"[Warning] min/max data not found in cache for {data_name}.")'''
+                    print(f"[Warning] min/max data not found in cache for {data_name}.")
 
         else:  # preprocess data according to missing rate
             if not os.path.exists(base_loc):
                 os.mkdir(base_loc)
             if not os.path.exists(loc):
                 os.mkdir(loc)
+                
+            self.min_data = 0
+            self.max_data = 0
 
             if data_name == 'EV':
                 # EV dataset
 
                 csv_path = f'./datasets/{data_name}_data.csv'
+                processed_dataset_path = preprocess_dataset(csv_path, data_name)
                 # Read the full CSV, header included
-                with open(csv_path, 'r') as f:
+                with open(processed_dataset_path, 'r') as f:
                     reader = csv.reader(f)
                     header = next(reader)  # First row = feature names
+                    print(header)
                     data = np.loadtxt(f, delimiter=",")
 
                 # Save features (columns' names) in the directory ./Output_info if not exist
@@ -352,6 +438,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
             self.train_coeffs = controldiffeq.natural_cubic_spline_coeffs(time, norm_data_tensor)
             self.original_sample = torch.tensor(self.original_sample)
             self.samples = torch.tensor(self.samples)
+            
 
             save_data(loc, data=self.samples,
                       original_data=self.original_sample,
@@ -359,6 +446,8 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                       train_b=self.train_coeffs[1],
                       train_c=self.train_coeffs[2],
                       train_d=self.train_coeffs[3],
+                      min_data=self.min_data,
+                      max_data=self.max_data,
                       )
 
             self.original_sample = np.array(self.original_sample)
