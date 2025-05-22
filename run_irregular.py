@@ -12,7 +12,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.kovae import KoVAE
 import torch.optim as optim
 import logging
-from utils.utils_data import create_timeDataset_irregular, inverse_MinMaxScaler
+from utils.utils_data import create_timeDataset_irregular, inverse_MinMaxScaler, decode_categorical_from_generated
 
 
 def define_args():
@@ -180,6 +180,14 @@ def main(args):
     if args.dataset == 'EV':
         # De-normalize the generated data
         generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
+        
+        ##################################################################################################################
+        #Post-processing in order to handle categorical features' output appropriately
+        generated_data_denormalized, event_cat, charge_cat = decode_categorical_from_generated(generated_data_denormalized)
+        ##################################################################################################################
+
+        print("Decoded event categories:", event_cat)
+        print("Decoded charge_mode categories:", charge_cat)
 
     # save generated data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'

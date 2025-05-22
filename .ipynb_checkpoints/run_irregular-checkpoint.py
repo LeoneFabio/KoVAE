@@ -180,6 +180,51 @@ def main(args):
     if args.dataset == 'EV':
         # De-normalize the generated data
         generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
+        
+        #Post-processing in order to handle categorical features output appropriately
+        def decode_categorical_from_generated(generated_data):
+            """
+            Decode one-hot encoded categorical features (event and charge_mode) 
+            from generated data and reconstruct the dataset with decoded integer labels.
+
+            Assumes:
+            - generated_data shape is (batch_size, seq_len, n_features)
+            - event one-hot columns at indices 5 and 6
+            - charge_mode one-hot columns at indices 7, 8, 9
+            """
+
+            # Indices of one-hot encoded categorical features
+            event_cols = [5, 6]
+            charge_cols = [7, 8, 9]
+
+            # Extract event one-hot predictions and decode via argmax along last axis
+            event_preds = generated_data[:, :, event_cols]  # shape (batch, seq_len, 2)
+            event_decoded = np.argmax(event_preds, axis=2)  # shape (batch, seq_len)
+
+            # Extract charge_mode one-hot predictions and decode via argmax
+            charge_preds = generated_data[:, :, charge_cols]  # shape (batch, seq_len, 3)
+            charge_decoded = np.argmax(charge_preds, axis=2)  # shape (batch, seq_len)
+
+            # Create a mask to keep all columns except the one-hot encoded ones
+            mask = np.ones(generated_data.shape[2], dtype=bool)
+            mask[event_cols + charge_cols] = False
+
+            # Extract the features without the one-hot encoded columns
+            data_wo_one_hot = generated_data[:, :, mask]  # shape (batch, seq_len, remaining_features)
+
+            # Now append the decoded categorical columns at the end
+            # decoded_cats shape should be (batch, seq_len, 2)
+            decoded_cats = np.stack((event_decoded, charge_decoded), axis=2)
+
+            # Concatenate along the last axis (features)
+            processed_data = np.concatenate((data_wo_one_hot, decoded_cats), axis=2)
+
+            return processed_data, event_decoded, charge_decoded
+
+        generated_data_denormalized, event_cat, charge_cat = decode_categorical_from_generated(generated_data_denormalized)
+
+        print("Decoded event categories:", event_cat)
+        print("Decoded charge_mode categories:", charge_cat)
 
     # save generated data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'

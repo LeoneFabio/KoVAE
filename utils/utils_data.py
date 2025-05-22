@@ -235,6 +235,7 @@ def preprocess_dataset(path, data_name):
 
     df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)'''
     
+    """One-hot encoding"""
     # Normalize/clean categorical columns
     df['event'] = df['event'].str.strip().str.lower()
     df['charge_mode'] = df['charge_mode'].astype(str).str.strip()
@@ -258,6 +259,8 @@ def preprocess_dataset(path, data_name):
     # One-hot encode 'charge_mode' (none, 240, dc)
     df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')
     
+    
+    
     ######################## HANDLE MISSING VALUES ######################################
     # Fill any remaining NaNs (e.g., missing soc values) 
     df = df.fillna(method='ffill')
@@ -265,6 +268,7 @@ def preprocess_dataset(path, data_name):
     
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
+    
 
     # Save the processed dataset
     output_dir = './Output_info'
@@ -272,12 +276,49 @@ def preprocess_dataset(path, data_name):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     df.to_csv(file_path, index=False)
-
+    
     print(f'Preprocessing complete. Output saved to {file_path}')
     
     return file_path
 
+def decode_categorical_from_generated(generated_data):
+            """
+            Decode one-hot encoded categorical features (event and charge_mode) 
+            from generated data and reconstruct the dataset with decoded integer labels.
 
+            Consider:
+            - generated_data shape is (batch_size, seq_len, n_features)
+            - event one-hot columns at indices 2 and 3
+            - charge_mode one-hot columns at indices 4, 5, 6
+            """
+
+            # Indices of one-hot encoded categorical features
+            event_cols = [2, 3]
+            charge_cols = [4, 5, 6]
+
+            # Extract event one-hot predictions and decode via argmax along last axis
+            event_preds = generated_data[:, :, event_cols]  # shape (batch, seq_len, 2)
+            event_decoded = np.argmax(event_preds, axis=2)  # shape (batch, seq_len)
+
+            # Extract charge_mode one-hot predictions and decode via argmax
+            charge_preds = generated_data[:, :, charge_cols]  # shape (batch, seq_len, 3)
+            charge_decoded = np.argmax(charge_preds, axis=2)  # shape (batch, seq_len)
+
+            # Create a mask to keep all columns except the one-hot encoded ones
+            mask = np.ones(generated_data.shape[2], dtype=bool)
+            mask[event_cols + charge_cols] = False
+
+            # Extract the features without the one-hot encoded columns
+            data_wo_one_hot = generated_data[:, :, mask]  # shape (batch, seq_len, remaining_features)
+
+            # Now append the decoded categorical columns at the end
+            # decoded_cats shape should be (batch, seq_len, 2)
+            decoded_cats = np.stack((event_decoded, charge_decoded), axis=2)
+
+            # Concatenate along the last axis (features)
+            processed_data = np.concatenate((data_wo_one_hot, decoded_cats), axis=2)
+
+            return processed_data, event_decoded, charge_decoded
 
 class TimeDataset_irregular(torch.utils.data.Dataset):
     def __init__(self, seq_len, data_name, missing_rate=0.0, return_minmax=False):
