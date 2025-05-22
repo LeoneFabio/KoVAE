@@ -288,13 +288,13 @@ def decode_categorical_from_generated(generated_data):
 
             Consider:
             - generated_data shape is (batch_size, seq_len, n_features)
-            - event one-hot columns at indices 2 and 3
-            - charge_mode one-hot columns at indices 4, 5, 6
+            - event one-hot columns at indices 5 and 6
+            - charge_mode one-hot columns at indices 7, 8, 9
             """
 
             # Indices of one-hot encoded categorical features
-            event_cols = [2, 3]
-            charge_cols = [4, 5, 6]
+            event_cols = [5, 6]
+            charge_cols = [7, 8, 9]
 
             # Extract event one-hot predictions and decode via argmax along last axis
             event_preds = generated_data[:, :, event_cols]  # shape (batch, seq_len, 2)
