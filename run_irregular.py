@@ -150,12 +150,12 @@ def main(args):
             x = x[:, :, :-1]
 
             optimizer.zero_grad()
-            x_rec, Z_enc, Z_enc_prior = model(train_coeffs, time, final_index)
+            x_rec, z_dist, z_prior_dist, z_prior_sample  = model(train_coeffs, time, final_index)
 
             x_no_nan = x[~torch.isnan(x)]
             x_rec_no_nan = x_rec[~torch.isnan(x)]
 
-            losses = model.loss(x_no_nan, x_rec_no_nan, Z_enc, Z_enc_prior)  # x_rec, x_pred_rec, z, z_pred_, Ct
+            losses = model.loss(x_no_nan, x_rec_no_nan, z_dist, z_prior_dist, z_prior_sample)  
             losses[0].backward()
             optimizer.step()
 

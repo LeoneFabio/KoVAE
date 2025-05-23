@@ -1,14 +1,27 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 
-def kl_loss(z_post_mean, z_post_logvar, z_prior_mean, z_prior_logvar):
+def kl_normal_loss(z_post_mean, z_post_logvar, z_prior_mean, z_prior_logvar):
     # COMPUTE KL DIV
     z_post_var = torch.exp(z_post_logvar)
     z_prior_var = torch.exp(z_prior_logvar)
     kld_z = 0.5 * (z_prior_logvar - z_post_logvar +
                    ((z_post_var + torch.pow(z_post_mean - z_prior_mean, 2)) / z_prior_var) - 1)
     return kld_z
+
+def kl_categorical_loss(post_logits, prior_logit, eps=1e-10):
+    """
+    KL divergence between categorical (softmax) posterior and unifrm prior probabilities.
+    logits: Tensor of shape (B, T, D)
+    """
+    q = F.softmax(post_logits, dim=-1) + eps
+    p = F.softmax(prior_logit, dim=-1) + eps
+    log_q = torch.log(q)
+    log_p = torch.log(p)
+    kl = torch.sum(q * (log_q - log_p), dim=-1)  # (B, T)
+    return kl.mean()
 
 
 def eig_loss(Ct_prior, mode):

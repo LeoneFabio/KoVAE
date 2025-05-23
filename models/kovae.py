@@ -6,18 +6,7 @@ from models.neuralCDE import NeuralCDE
 from models.modules import FinalTanh
 from utils.utils import device_available
 
-
-
-def reparameterize(mean, logvar, random_sampling=True):
-    # Reparametrization occurs only if random sampling is set to true, otherwise mean is returned
-    if random_sampling is True:
-        eps = torch.randn_like(logvar)
-        std = torch.exp(0.5 * logvar)
-        z = mean + eps * std
-        return z
-    else:
-        return mean
-
+EPS = 1e-12
 
 class VKEncoderIrregular(nn.Module):
     def __init__(self, args):
@@ -106,25 +95,80 @@ class KoVAE(nn.Module):
         self.pinv_solver = args.pinv_solver
         self.missing_value = args.missing_value
 
+
+        ############################################################################
+        '''
+        latent_spec : dict
+            Specifies latent distribution. For example:
+            {'cont': 10, 'disc': [10, 4, 3]} encodes 10 normal variables and
+            3 gumbel softmax variables of dimension 10, 4 and 3. A latent spec
+            can include both 'cont' and 'disc' or only 'cont' or only 'disc'.
+
+        temperature : float
+            Temperature for gumbel softmax distribution.'''
+        
+        ############################### HARD CODED ##############################
+        self.latent_spec = {'cont': self.z_dim, 'disc': [2,3]}
+        self.temperature = 0.67
+        ##########################################################################
+
+        self.is_continuous = 'cont' in self.latent_spec
+        self.is_discrete = 'disc' in self.latent_spec
+
+        # Calculate dimensions of latent distribution
+        self.latent_cont_dim = 0
+        self.latent_disc_dim = 0
+        self.num_disc_latents = 0
+        if self.is_continuous:
+            self.latent_cont_dim = self.latent_spec['cont']
+        if self.is_discrete:
+            self.latent_disc_dim += sum([dim for dim in self.latent_spec['disc']])
+            self.num_disc_latents = len(self.latent_spec['disc'])
+        self.latent_dim = self.latent_cont_dim + self.latent_disc_dim
+        ############################################################################
+        
+        
+        # Define encoder 
         if self.missing_value > 0.:
             self.encoder = VKEncoderIrregular(self.args)
         else:
             self.encoder = VKEncoder(self.args)
+
+
+        # Define decoder    
         self.decoder = VKDecoder(self.args)
 
-        # ----- Prior of content is a uniform Gaussian and Prior of motion is an LSTM
-        self.z_prior_gru = nn.GRUCell(self.z_dim, self.hidden_dim)
 
-        self.z_prior_mean = nn.Linear(self.hidden_dim, self.z_dim)
-        self.z_prior_logvar = nn.Linear(self.hidden_dim, self.z_dim)
 
-        # ----- Posterior of sequence
-        self.z_mean = nn.Linear(self.hidden_dim * 2, self.z_dim)
-        self.z_logvar = nn.Linear(self.hidden_dim * 2, self.z_dim)
+        ##############################################################################
+        # Prior network: GRUCell outputs both cont and disc prior parameters
+        self.z_prior_gru = nn.GRUCell(self.latent_dim, self.hidden_dim)
+        if self.is_continuous:
+            self.z_prior_mean = nn.Linear(self.hidden_dim, self.latent_cont_dim)
+            self.z_prior_logvar = nn.Linear(self.hidden_dim, self.latent_cont_dim)
+        if self.is_discrete:
+            # Linear layer for each of the categorical distributions
+            z_alphas = []
+            for disc_dim in self.latent_spec['disc']:
+                z_alphas.append(nn.Linear(self.hidden_dim, disc_dim))
+            self.z_prior_alphas = nn.ModuleList(z_alphas)
+
+
+        # ----- Posterior of sequence  -----
+        # Encode parameters of latent distribution
+        if self.is_continuous:
+            self.z_mean = nn.Linear(self.hidden_dim * 2 , self.latent_cont_dim)
+            self.z_logvar = nn.Linear(self.hidden_dim * 2, self.latent_cont_dim)
+        if self.is_discrete:
+            # Linear layer for each of the categorical distributions
+            z_alphas = []
+            for disc_dim in self.latent_spec['disc']:
+                z_alphas.append(nn.Linear(self.hidden_dim * 2, disc_dim))
+            self.z_alphas = nn.ModuleList(z_alphas)
 
         self.names = ['total', 'rec', 'kl', 'pred_prior']
 
-
+    
     def forward(self, x, time=None, final_index=None):
 
         # ------------- ENCODING PART -------------
@@ -133,33 +177,52 @@ class KoVAE(nn.Module):
         else:
             z = self.encoder(x)
 
-        # variational part for input
-        z_mean = self.z_mean(z)
-        z_logvar = self.z_logvar(z)
-        z_post = reparameterize(z_mean, z_logvar, random_sampling=True)
+        
+        # Output parameters of latent distribution from hidden representation
+        z_dist = {}
+        if self.is_continuous:
+            z_dist['cont'] = [self.z_mean(z), self.z_logvar(z)]
 
-        Z_enc = {'mean': z_mean, 'logvar': z_logvar, 'sample': z_post}
+        if self.is_discrete:
+            z_dist['disc'] = []
+            for z_alpha in self.z_alphas:
+                z_dist['disc'].append(z_alpha(z))
+        
 
-        # # ------------- PRIOR PART -------------
-        z_mean_prior, z_logvar_prior, z_out = self.sample_prior(z.size(0), self.seq_len, random_sampling=True)
-        Z_enc_prior = {'mean': z_mean_prior, 'logvar': z_logvar_prior, 'sample': z_out}
+        # Reparameterization trick
+        z_post = self.reparameterize(z_dist, random_sampling=True, isTraining=True)
 
-        # pass z_post instead of z_pred
+        '''Z_enc = {
+            'mean': latent_dist.get('cont', [None])[0],
+            'logvar': latent_dist.get('cont', [None, None])[1],
+            'sample': z_post
+        }'''
+
+
+        #  ------------- PRIOR PART -------------
+        z_prior_dist, z_prior_sample = self.sample_prior(z.size(0), self.seq_len, random_sampling=True, isTraining=True)
+        
+        '''Z_enc_prior = {
+            'mean': z_prior_dist.get('cont', [None])[0],
+            'logvar': z_prior_dist.get('cont', [None, None])[1],
+            'sample': z_prior_sample
+        }'''
+
         x_rec = self.decoder(z_post)
 
-        return x_rec, Z_enc, Z_enc_prior
+        return x_rec, z_dist, z_prior_dist, z_prior_sample
 
     def compute_operator_and_pred(self, z):
         z_past, z_future = z[:, :-1], z[:, 1:]  # split latent
 
         # solve linear system (broadcast)
         if self.pinv_solver:
-            Ct = torch.linalg.pinv(z_past.reshape(-1, self.z_dim)) @ z_future.reshape(-1, self.z_dim)
+            Ct = torch.linalg.pinv(z_past.reshape(-1, self.latent_dim)) @ z_future.reshape(-1, self.latent_dim)
 
         else:
             # self.qr_solver
-            Q, R = torch.linalg.qr(z_past.reshape(-1, self.z_dim))
-            B = Q.T @ z_future.reshape(-1, self.z_dim)
+            Q, R = torch.linalg.qr(z_past.reshape(-1, self.latent_dim))
+            B = Q.T @ z_future.reshape(-1, self.latent_dim)
             Ct = torch.linalg.solve_triangular(R, B, upper=True)
 
         # predict (broadcast)
@@ -173,83 +236,183 @@ class KoVAE(nn.Module):
 
         return Ct, z_pred, err
 
-    def loss(self, x, x_rec, Z_enc, Z_enc_prior):
+    def loss(self, x, x_rec, z_dist, z_prior_dist, z_prior_sample):
         """
-        :param x: The original sequence input
-        :param x_rec: The reconstructed sequence
-        :param Z_enc: Dictionary of posterior modeling {mean, logvar and sample}
-        :param Z_enc_prior: Dictionary of prior modeling {mean, logvar and sample}
-        :return: loss value
+        :param x: Original input sequence
+        :param x_rec: Reconstructed sequence
+        :param z_dist: Posterior latent distributions (dict with 'cont' and/or 'disc')
+        :param z_prior_dist: Prior latent distributions (same format)
+        :param z_prior_sample: Prior-sampled full latent trajectory
+        :return: tuple of (total loss, rec loss, KL loss, predictive loss)
         """
 
-        # PENALTIES
         a0 = self.args.w_rec
         a1 = self.args.w_kl
         a2 = self.args.w_pred_prior
-
         batch_size = x.size(0)
 
-        z_post_mean, z_post_logvar, z_post = Z_enc['mean'], Z_enc['logvar'], Z_enc['sample']
-        z_prior_mean, z_prior_logvar, z_prior = Z_enc_prior['mean'], Z_enc_prior['logvar'], Z_enc_prior['sample']
-        ## Ap after sampling ##
-        Ct_prior, z_pred_prior, pred_err_prior = self.compute_operator_and_pred(z_prior)
+        loss = 0.0
+        agg_losses = []
 
-        loss = .0
-        if self.args.w_rec:
-            recon = F.mse_loss(x_rec, x, reduction='sum') / batch_size
-            loss = a0 * recon
-            agg_losses = [loss]
+        # --- 1. Reconstruction Loss ---
+        if a0 > 0:
+            recon_loss = F.mse_loss(x_rec, x, reduction='sum') / batch_size
+            loss += a0 * recon_loss
+            agg_losses.append(recon_loss)
+        else:
+            recon_loss = torch.tensor(0.0, device=x.device)
 
-        if self.args.w_kl:
-            kld_z = losses.kl_loss(z_post_mean, z_post_logvar, z_prior_mean, z_prior_logvar)
-            # kld_z = torch.clamp(kld_z, min=self.budget)
-            kld_z = torch.sum(kld_z) / batch_size
-            loss += a1 * kld_z
-            agg_losses.append(kld_z)
+        # --- 2. KL Divergence Loss ---
+        kl_loss = torch.tensor(0.0, device=x.device)
 
-        if self.args.w_pred_prior:
+        # Continuous KL
+        if self.is_continuous and z_dist.get('cont') is not None:
+            z_post_mean, z_post_logvar = z_dist['cont']
+            z_prior_mean, z_prior_logvar = z_prior_dist['cont']
+            kl_cont = losses.kl_normal_loss(z_post_mean, z_post_logvar, z_prior_mean, z_prior_logvar)
+            kl_cont = torch.sum(kl_cont) / batch_size
+            kl_loss += kl_cont
+
+        # Discrete KL
+        if self.is_discrete and z_dist.get('disc') is not None and z_prior_dist.get('disc') is not None:
+            for post_logit, prior_logit in zip(z_dist['disc'], z_prior_dist['disc']):
+                # Posterior uses softmax over logits (already in z_dist)
+                kl_disc = losses.kl_categorical_loss(post_logit, prior_logit)
+                kl_loss += kl_disc
+
+        if a1 > 0:
+            loss += a1 * kl_loss
+        agg_losses.append(kl_loss)
+
+        # --- 3. Predictive Loss on Latent Prior ---
+        if a2 > 0:
+            _, _, pred_err_prior = self.compute_operator_and_pred(z_prior_sample)
             loss += a2 * pred_err_prior
+        else:
+            pred_err_prior = torch.tensor(0.0, device=x.device)
+
         agg_losses.append(pred_err_prior)
 
+        # Total loss first
         agg_losses = [loss] + agg_losses
         return tuple(agg_losses)
 
 
-    def sample_data(self, n_sample):
+
+    def sample_data(self, n_sample, isTraining=False):
         # sample from prior
-        z_mean_prior, z_logvar_prior, z_out = self.sample_prior(n_sample, self.seq_len, random_sampling=True)
+        _, z_out = self.sample_prior(n_sample, self.seq_len, random_sampling=True, isTraining=isTraining)
         x_rec = self.decoder(z_out)
         return x_rec
 
     # ------ sample z purely from learned LSTM prior with arbitrary seq ------
-    def sample_prior(self, n_sample, seq_len, random_sampling=True):
-
-        batch_size = n_sample
-
-        # z_out = None  # This will ultimately store all z_s in the format [batch_size, seq_len, z_dim]
-        z_logvars, z_means, z_out = self.zeros_init(batch_size, seq_len)
-
-        # initialize arbitrary input (zeros) and hidden states.
+    def sample_prior(self, n_sample, seq_len, random_sampling=True, isTraining=False):
         device = device_available()
-        z_t = torch.zeros(batch_size, self.z_dim).to(device)
-        h_t = torch.zeros(batch_size, self.hidden_dim).to(device)
 
-        for i in range(seq_len):
+        z_t = torch.zeros(n_sample, self.latent_dim, device=device)
+        h_t = torch.zeros(n_sample, self.hidden_dim, device=device)
+
+        z_seq = []
+        cont_means, cont_logvars = [], []
+
+        disc_logits = [[] for _ in range(self.num_disc_latents)]  # Track logits over time
+
+        for _ in range(seq_len):
             h_t = self.z_prior_gru(z_t, h_t)
 
-            z_mean_t = self.z_prior_mean(h_t)
-            z_logvar_t = self.z_prior_logvar(h_t)
-            z_t = reparameterize(z_mean_t, z_logvar_t, random_sampling)
+            z_parts = []
 
-            z_out[:, i] = z_t
-            z_means[:, i] = z_mean_t
-            z_logvars[:, i] = z_logvar_t
+            if self.is_continuous:
+                mean_t = self.z_prior_mean(h_t)
+                logvar_t = self.z_prior_logvar(h_t)
+                cont_sample = self.sample_normal(mean_t, logvar_t, isTraining)
 
-        return z_means, z_logvars, z_out
+                cont_means.append(mean_t)
+                cont_logvars.append(logvar_t)
+                z_parts.append(cont_sample)
 
-    def zeros_init(self, batch_size, seq_len):
-        device = device_available()
-        z_out = torch.zeros(batch_size, seq_len, self.z_dim).to(device)
-        z_means = torch.zeros(batch_size, seq_len, self.z_dim).to(device)
-        z_logvars = torch.zeros(batch_size, seq_len, self.z_dim).to(device)
-        return z_logvars, z_means, z_out
+            if self.is_discrete:
+                for i, alpha_layer in enumerate(self.z_prior_alphas):
+                    logits = alpha_layer(h_t)  # raw logits
+                    disc_logits[i].append(logits)
+                    disc_sample = self.sample_gumbel_softmax(logits, isTraining)
+
+                    z_parts.append(disc_sample)
+
+            z_t = torch.cat(z_parts, dim=1)
+            z_seq.append(z_t)
+
+        z_seq = torch.stack(z_seq, dim=1)  # (B, T, latent_dim)
+
+        latent_dist = {}
+        if self.is_continuous:
+            latent_dist['cont'] = [
+                torch.stack(cont_means, dim=1),     # (B, T, latent_cont_dim)
+                torch.stack(cont_logvars, dim=1),   # (B, T, latent_cont_dim)
+            ]
+
+        if self.is_discrete:
+            # Stack each group of logits across time steps
+            disc_logit_stacks = [torch.stack(logits_per_cat, dim=1) for logits_per_cat in disc_logits]
+            latent_dist['disc'] = disc_logit_stacks  # list of (B, T, latent_dsc_dim)
+
+        return latent_dist, z_seq
+
+    
+    
+    def reparameterize(self, latent_dist, random_sampling=True, isTraining=True):
+        # Reparametrization occurs only if random sampling is set to true, otherwise mean is returned
+        if random_sampling is True:
+            latent_sample = []
+            if self.is_continuous:
+                mean, logvar = latent_dist['cont']
+                cont_sample = self.sample_normal(mean, logvar, isTraining)
+                latent_sample.append(cont_sample)
+
+            if self.is_discrete:
+                for alpha in latent_dist['disc']:
+                    disc_sample = self.sample_gumbel_softmax(alpha, isTraining)
+                    latent_sample.append(disc_sample)
+
+            # Concatenate continuous and discrete samples into one large sample
+            return torch.cat(latent_sample, dim=1)
+        else:
+            mean, _ = latent_dist['cont']
+            return mean
+        
+    def sample_normal(self, mean, logvar, isTraining):
+        # Sample from a normal distribution
+        if isTraining:
+            std = torch.exp(0.5 * logvar)
+            eps = torch.zeros(std.size()).normal_()
+            if torch.cuda.is_available():
+                eps = eps.cuda()
+            return mean + std * eps
+        else:
+            # Reconstruction mode
+            return mean
+    
+    def sample_gumbel_softmax(self, alpha, isTraining):    
+        if isTraining:
+            # Sample from gumbel distribution
+            unif = torch.rand(alpha.size())
+            if torch.cuda.is_available():
+                unif = unif.cuda()
+            gumbel = -torch.log(-torch.log(unif + EPS) + EPS)
+            # Reparameterize to create gumbel softmax sample
+            log_alpha = torch.log(alpha + EPS)
+            logit = (log_alpha + gumbel) / self.temperature
+            return F.softmax(logit, dim=1)
+        else:
+            # In reconstruction mode, pick most likely sample
+            _, max_alpha = torch.max(alpha, dim=1)
+            one_hot_samples = torch.zeros(alpha.size())
+            # On axis 1 of one_hot_samples, scatter the value 1 at indices
+            # max_alpha. Note the view is because scatter_ only accepts 2D
+            # tensors.
+            one_hot_samples.scatter_(1, max_alpha.view(-1, 1).data.cpu(), 1)
+            if torch.cuda.is_available():
+                one_hot_samples = one_hot_samples.cuda()
+            return one_hot_samples
+    
+    
