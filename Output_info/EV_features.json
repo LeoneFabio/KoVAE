@@ -1,1 +1,1 @@
-["odo", "end_odo", "soc", "end_soc", "duration_minutes", "event_charge", "event_trip", "charge_240", "charge_dc", "charge_none"]
+["odo", "end_odo", "soc", "end_soc", "event", "charge_mode", "duration_minutes"]

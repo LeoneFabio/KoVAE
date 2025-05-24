@@ -216,7 +216,9 @@ def preprocess_dataset(path, data_name):
     # Drop original time columns
     df = df.drop(columns=['timestamp', 'end_time'])
     
-    ''' Label encoding 
+    
+    
+    """ Label encoding """
     
     # Encode 'event': trip → 0, charge → 1
     event_mapping = {'trip': 0, 'charge': 1}
@@ -233,10 +235,14 @@ def preprocess_dataset(path, data_name):
         else:
             return 0  # fallback for unexpected values
 
-    df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)'''
+    df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)
+    
+    
+    
     
     """One-hot encoding"""
-    # Normalize/clean categorical columns
+    
+    '''# Normalize/clean categorical columns
     df['event'] = df['event'].str.strip().str.lower()
     df['charge_mode'] = df['charge_mode'].astype(str).str.strip()
 
@@ -257,7 +263,7 @@ def preprocess_dataset(path, data_name):
     df['charge_mode'] = df['charge_mode'].apply(map_charge_mode)
 
     # One-hot encode 'charge_mode' (none, 240, dc)
-    df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')
+    df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')'''
     
     
     

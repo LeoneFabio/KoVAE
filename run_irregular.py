@@ -37,7 +37,7 @@ def define_args():
     # model
     parser.add_argument('--batch_norm', type=bool, default=True)
     parser.add_argument('--num_layers', type=int, default=3)
-    parser.add_argument('--z_dim', type=int, default=16)
+    parser.add_argument('--z_dim', type=int, default=16, help='dimension of the continuous latent space')
     parser.add_argument('--hidden_dim', type=int, default=20,
                         help='the hidden dimension of the output decoder lstm')
 
@@ -121,8 +121,10 @@ def main(args):
 
     logging.info(args.dataset + ' dataset is ready.')
 
+    if args.dataset == 'EV':
+        latent_spec = {'cont': args.z_dim, 'disc': [2, 3]}
     # create model
-    model = KoVAE(args).to(device=args.device)
+    model = KoVAE(args, latent_spec).to(device=args.device)
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
@@ -181,13 +183,14 @@ def main(args):
         # De-normalize the generated data
         generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
         
-        ##################################################################################################################
-        #Post-processing in order to handle categorical features' output appropriately
+        ''' ##########################################################################
+        #POST-PROCESSING in order to handle categorical features' output appropriately
         generated_data_denormalized, event_cat, charge_cat = decode_categorical_from_generated(generated_data_denormalized)
-        ##################################################################################################################
+        
 
         print("Decoded event categories:", event_cat)
         print("Decoded charge_mode categories:", charge_cat)
+        #############################################################################'''
 
     # save generated data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
