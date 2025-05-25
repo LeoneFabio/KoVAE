@@ -171,7 +171,7 @@ class KoVAE(nn.Module):
         self.names = ['total', 'rec', 'kl', 'pred_prior']
 
     
-    def forward(self, x, time=None, final_index=None):
+    def forward(self, x, time=None, final_index=None, isTraining=True):
 
         # ------------- ENCODING PART -------------
         if time is not None and final_index is not None:
@@ -191,7 +191,7 @@ class KoVAE(nn.Module):
                 z_dist['disc'].append(F.softmax(z_alpha(z), dim=1))
         
         # Reparameterization trick
-        z_post = self.reparameterize(z_dist, random_sampling=True, isTraining=True)
+        z_post = self.reparameterize(z_dist, random_sampling=True, isTraining=isTraining)
 
         '''Z_enc = {
             'mean': latent_dist.get('cont', [None])[0],
@@ -201,7 +201,7 @@ class KoVAE(nn.Module):
 
 
         #  ------------- PRIOR PART -------------
-        z_prior_dist, z_prior_sample = self.sample_prior(z.size(0), self.seq_len, random_sampling=True, isTraining=True)
+        z_prior_dist, z_prior_sample = self.sample_prior(z.size(0), self.seq_len, random_sampling=True, isTraining=isTraining)
         
         '''Z_enc_prior = {
             'mean': z_prior_dist.get('cont', [None])[0],
@@ -473,14 +473,17 @@ class KoVAE(nn.Module):
             return F.softmax(logit, dim=1)
         else:
             # In reconstruction mode, pick most likely sample
-            _, max_alpha = torch.max(alpha, dim=1)
-            one_hot_samples = torch.zeros(alpha.size())
+            max_alpha = torch.argmax(alpha, dim=-1) 
+            one_hot_samples = torch.zeros_like(alpha)
+            print("one_hot_samples shape:")
+            print(one_hot_samples.shape)
             # On axis 1 of one_hot_samples, scatter the value 1 at indices
             # max_alpha. Note the view is because scatter_ only accepts 2D
             # tensors.
-            one_hot_samples.scatter_(1, max_alpha.view(-1, 1).data.cpu(), 1)
+            one_hot_samples.scatter_(-1, max_alpha.unsqueeze(-1), 1)
             if torch.cuda.is_available():
                 one_hot_samples = one_hot_samples.cuda()
             return one_hot_samples
+        
     
     
