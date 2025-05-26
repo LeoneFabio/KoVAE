@@ -105,13 +105,12 @@ class KoVAE(nn.Module):
 
         temperature : float
             Temperature for gumbel softmax distribution.'''
+        
         if not latent_spec:
             self.latent_spec = {'cont': self.z_dim}
         else:
             self.latent_spec = latent_spec
         self.temperature = temperature
-        
-        
         
 
         self.is_continuous = 'cont' in self.latent_spec
@@ -127,7 +126,7 @@ class KoVAE(nn.Module):
             self.latent_disc_dim += sum([dim for dim in self.latent_spec['disc']])
             self.num_disc_latents = len(self.latent_spec['disc'])
         self.latent_dim = self.latent_cont_dim + self.latent_disc_dim
-        ############################################################################
+       
         
         
         # Define encoder 
@@ -142,7 +141,7 @@ class KoVAE(nn.Module):
 
 
 
-        ##############################################################################
+    
         # Prior network: GRUCell outputs both cont and disc prior parameters
         self.z_prior_gru = nn.GRUCell(self.latent_dim, self.hidden_dim)
         if self.is_continuous:
@@ -193,21 +192,11 @@ class KoVAE(nn.Module):
         # Reparameterization trick
         z_post = self.reparameterize(z_dist, random_sampling=True, isTraining=isTraining)
 
-        '''Z_enc = {
-            'mean': latent_dist.get('cont', [None])[0],
-            'logvar': latent_dist.get('cont', [None, None])[1],
-            'sample': z_post
-        }'''
 
 
         #  ------------- PRIOR PART -------------
         z_prior_dist, z_prior_sample = self.sample_prior(z.size(0), self.seq_len, random_sampling=True, isTraining=isTraining)
-        
-        '''Z_enc_prior = {
-            'mean': z_prior_dist.get('cont', [None])[0],
-            'logvar': z_prior_dist.get('cont', [None, None])[1],
-            'sample': z_prior_sample
-        }'''
+
 
         x_rec = self.decoder(z_post)
 
@@ -326,23 +315,6 @@ class KoVAE(nn.Module):
             pred_err_prior = torch.tensor(0.0, device=x.device)
 
         agg_losses.append(pred_err_prior)
-        
-        '''# === DEBUG PRINTS ===
-        print("=== LOSS BREAKDOWN ===")
-        print("Reconstruction loss:", recon_loss.item())
-        print("KL continuous:", kl_cont.item())
-        print("KL discrete:", kl_disc.item())
-        print("KL total:", kl_loss.item())
-        print("Pred error prior:", pred_err_prior.item())
-        print("Total loss:", loss.item())
-
-        # Check for NaNs/Infs
-        for name, val in [("recon_loss", recon_loss), ("kl_cont", kl_cont),
-                          ("kl_disc", kl_disc), ("pred_err_prior", pred_err_prior), ("loss", loss)]:
-            if torch.isnan(val).any():
-                print(f"[NaN WARNING] {name} contains NaN")
-            if torch.isinf(val).any():
-                print(f"[Inf WARNING] {name} contains Inf")'''
         
 
         # Total loss first

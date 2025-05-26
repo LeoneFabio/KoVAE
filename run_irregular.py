@@ -13,7 +13,8 @@ from models.kovae import KoVAE
 import torch.optim as optim
 import logging
 from utils.utils_data import create_timeDataset_irregular, inverse_MinMaxScaler, decode_categorical_from_generated
-from viz.visualize import Visualizer
+from viz.getter import Getter
+from viz.visualizer_tabular import TabularVisualizer
 
 def define_args():
     parser = argparse.ArgumentParser(description="KoVAE")
@@ -171,17 +172,15 @@ def main(args):
 
     logging.info("Training is complete")
 
+    
+    
+    ########## OUTPUTS AND LATENT TRAVERSAL ##########
+    
+    
     # generate datasets:
     args.device = set_seed_device(args.seed)
-    model.eval()
-    with torch.no_grad():
-        generated_data = []
-        for data in train_loader:
-            n_sample = data['original_data'].shape[0]
-            generated_data.append(model.sample_data(n_sample).detach().cpu().numpy())
-    generated_data = np.vstack(generated_data)
-
-    logging.info("Data generation is complete")
+    getter = Getter(model)
+    generated_data = getter.get_generated_data(train_loader)
 
     if args.dataset == 'EV':
         # De-normalize the generated data
@@ -197,9 +196,7 @@ def main(args):
         #############################################################################'''
 
 
-    # OUTPUT AND LATENT TRAVERSAL
-
-    # save generated data in torch format in the directory ./Generated_data if not exist
+    # save data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
     file_path = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
     if not os.path.exists(output_dir):
@@ -211,30 +208,8 @@ def main(args):
         torch.save(torch.from_numpy(generated_data), file_path)
     logging.info(f"Generated data saved to {file_path}")
     
-    
-    
-    
-    from viz.visualizer_tabular import TabularVisualizer
-
-    # After training the model
-    visualizer = TabularVisualizer(model)
-    
-    for i, data in enumerate(train_loader, 1):
-            break
-            
-    # data should be taken from test_loader 
-    visualizer.reconstructions(data)
-    visualizer.samples()
-    visualizer.latent_traversal(cont_idx=0)
-
-
-    """viz = Visualizer(model)
-
-    # Reconstruct data using the trained model
-    for i, data in enumerate(train_loader, 1):
-            break
-    recon = viz.reconstructions(data, time, final_index)
-    recon = recon.detach().cpu().numpy()
+    #Reconstruct data
+    recon = getter.get_reconstructed_data(train_loader, time, final_index)
     if args.dataset == 'EV':
         # De-normalize the reconstructed data
         recon = inverse_MinMaxScaler(recon, min_data, max_data)
@@ -243,8 +218,7 @@ def main(args):
     logging.info(f"Reconstructed data saved to {file_path}")
     
     # Embedded original data -> data reference from reconstruction 
-    original = viz.get_original_data(data)
-    original = original.detach().cpu().numpy()
+    original = getter.get_original_data(train_loader)
     if args.dataset == 'EV':
         # De-normalize the original data
         original = inverse_MinMaxScaler(original, min_data, max_data)
@@ -252,22 +226,18 @@ def main(args):
     torch.save(torch.from_numpy(original), file_path)
     logging.info(f"Original data saved to {file_path}")
     
+    
 
-    '''# All latent traversal
-    traversal = viz.all_latent_traversals(size=args.z_dim+sum(disc_dim))
-    traversal = traversal.detach().cpu().numpy()
-    if args.dataset == 'EV':
-        # De-normalize the traversal data
-        traversal = inverse_MinMaxScaler(traversal, min_data, max_data)
-    file_path = os.path.join(output_dir, f'{args.dataset}_all_latent_traversal.pt')
-    torch.save(torch.from_numpy(traversal), file_path)
-    logging.info(f"All latent traversal data saved to {file_path}")
-
-    '''# Grid of some traversals
-    grid = viz.latent_traversal_grid(cont_idx=2, cont_axis=1, disc_idx=0, disc_axis=0, size=(args.z_dim, disc_dim))
-    file_path = os.path.join(output_dir, f'{args.dataset}_latent_traversal_grid.pt')
-    torch.save(torch.from_numpy(grid), file_path)
-    logging.info(f"Latent traversal grid data saved to {file_path}")'''"""
+    #PLOTS -> Visualization of reconstruction, generated data and latent traversals
+    # After training the model
+    visualizer = TabularVisualizer(model)
+    
+    visualizer.reconstructions(original, recon)
+    visualizer.samples(generated_data_denormalized)
+    for cont_idx in range(args.z_dim):
+        visualizer.latent_traversal(cont_idx=cont_idx)
+    for disc_idx in range(len(disc_dim)):
+        visualizer.latent_traversal(disc_idx=disc_idx)
 
 
 
