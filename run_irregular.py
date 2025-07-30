@@ -48,6 +48,12 @@ def define_args():
     parser.add_argument('--w_kl', type=float, default=.1)
     parser.add_argument('--w_pred_prior', type=float, default=0.0005)
 
+    # filters
+    parser.add_argument('--event', default=None, choices=['trip', 'charge'],
+                    help='filter events, insert trip or charge')
+    parser.add_argument('--charge_mode', default=None, choices=['0', '120', '240', 'DC'],
+                    help='filter charge modes, insert 0, 120, 240 or DC')
+
     return parser
 
 def set_seed_device(seed):
@@ -91,6 +97,9 @@ parser = define_args()
 args = parser.parse_args()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+if args.charge_mode is not None and args.event not in [None, 'charge']:
+    parser.error("--charge_mode is only allowed if --event is 'charge' or not set.")
+
 
 def main(args):
 
@@ -105,7 +114,7 @@ def main(args):
     args.log_dir = '%s/%s/%s' % (args.log_dir, args.dataset, name)
 
     if args.dataset == 'EV':
-        dataset, min_data, max_data = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value, return_minmax=True)
+        dataset, min_data, max_data = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value, event=args.event, charge_mode=args.charge_mode, return_minmax=True)
     else:
         dataset = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value)
 

@@ -199,7 +199,7 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
         return data, min_data, max_data
     return data
 
-def preprocess_dataset(path, data_name):
+def preprocess_dataset(path, data_name, event=None, charge_mode=None):
 
     # Load CSV
     df = pd.read_csv(path, sep=',')
@@ -217,6 +217,14 @@ def preprocess_dataset(path, data_name):
     # Drop original time columns
     df = df.drop(columns=['timestamp', 'end_time'])
     
+    ######################### FILTERING SECTION #######################################
+    # Apply filtering before encoding
+    if event is not None:
+        df = df[df['event'].str.strip().str.lower() == event.lower()]
+
+    if charge_mode is not None:
+        df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
+    ###################################################################################
     
     
     """ Label encoding """
@@ -225,14 +233,16 @@ def preprocess_dataset(path, data_name):
     event_mapping = {'trip': 0, 'charge': 1}
     df['event'] = df['event'].map(event_mapping)
 
-    # Encode 'charge_mode': NaN → 0, '240' → 1, 'DC Charging' → 2
+    # Encode 'charge_mode': NaN → 0, '120' → 1, '240' → 2, 'DC Charging' → 3
     def encode_charge_mode(val):
         if pd.isna(val):
             return 0
-        elif str(val).strip() == '240':
+        elif str(val).strip() == '120':
             return 1
-        elif 'DC' in str(val):
+        elif str(val).strip() == '240':
             return 2
+        elif 'DC' in str(val):
+            return 3
         else:
             return 0  # fallback for unexpected values
 
@@ -332,7 +342,7 @@ def decode_categorical_from_generated(generated_data):
             return processed_data, event_decoded, charge_decoded
 
 class TimeDataset_irregular(torch.utils.data.Dataset):
-    def __init__(self, seq_len, data_name, missing_rate=0.0, return_minmax=False):
+    def __init__(self, seq_len, data_name, missing_rate=0.0, event=None, charge_mode=None, return_minmax=False):
         SEED = 56789
         base_loc = PROJECT_DIR / 'datasets'
         loc = PROJECT_DIR / 'datasets' / (data_name + str(missing_rate))
@@ -365,7 +375,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 # EV dataset
 
                 csv_path = f'./datasets/{data_name}_data.csv'
-                processed_dataset_path = preprocess_dataset(csv_path, data_name)
+                processed_dataset_path = preprocess_dataset(csv_path, data_name, event=event, charge_mode=charge_mode)
                 # Read the full CSV, header included
                 with open(processed_dataset_path, 'r') as f:
                     reader = csv.reader(f)
@@ -517,7 +527,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.samples)
 
-def create_timeDataset_irregular(data_name, seq_len, missing_rate=0.0, return_minmax=False):
+def create_timeDataset_irregular(data_name, seq_len, missing_rate=0.0, event=None, charge_mode=None, return_minmax=False):
     """Create time-series irregular dataset instance
 
     Args:
@@ -531,7 +541,7 @@ def create_timeDataset_irregular(data_name, seq_len, missing_rate=0.0, return_mi
       - min_data: min values of the dataset
       - max_data: max values of the dataset
     """
-    dataset = TimeDataset_irregular(seq_len, data_name, missing_rate=missing_rate, return_minmax=return_minmax)    
+    dataset = TimeDataset_irregular(seq_len, data_name, missing_rate=missing_rate, event=event, charge_mode=charge_mode, return_minmax=return_minmax)    
     if return_minmax:
         return dataset, dataset.min_data, dataset.max_data
     else:
