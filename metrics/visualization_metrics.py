@@ -77,8 +77,7 @@ def visualization (ori_data, generated_data, analysis, args, run=None):
     plt.title('PCA plot')
     plt.xlabel('x-pca')
     plt.ylabel('y_pca')
-    # plt.savefig(f'./figures/{args.rnn_type}/sine_pca_{args.z_dim}_h_dim_{args.hidden_dim}_w_kl_{args.w_kl}.pdf', transparent=True,
-    #             bbox_inches='tight', pad_inches=0, dpi=300)
+    plt.savefig(f'./visualizations/{args.dataset}_pca.pdf', transparent=True)
     if run:
       run["test/pca_ori_gen"].log(f)
     plt.show()
@@ -90,7 +89,10 @@ def visualization (ori_data, generated_data, analysis, args, run=None):
     prep_data_final = np.concatenate((prep_data, prep_data_hat), axis = 0)
     
     # TSNE anlaysis
-    tsne = TSNE(n_components = 2, verbose = 1, perplexity = 40, n_iter = 300)
+    n_samples = prep_data_final.shape[0]
+    perplexity = min(40, n_samples - 1)  # Ensure it's always valid
+    
+    tsne = TSNE(n_components = 2, verbose = 1, perplexity = perplexity, n_iter = 300)
     tsne_results = tsne.fit_transform(prep_data_final)
       
     # Plotting
@@ -106,8 +108,8 @@ def visualization (ori_data, generated_data, analysis, args, run=None):
     plt.title('t-SNE plot')
     plt.xlabel('x-tsne')
     plt.ylabel('y_tsne')
-    # plt.savefig(f'./figures/{args.rnn_type}/sine_tsne_{args.z_dim}_h_dim_{args.hidden_dim}_w_kl_{args.w_kl}.pdf', transparent=True,
-    #             bbox_inches='tight', pad_inches=0, dpi=300)
+    plt.savefig(f'./visualizations/{args.dataset}_tsne.pdf', transparent=True)
+    
     if run:
       run["test/tsne_ori_gen"].log(f)
     plt.show()
@@ -122,7 +124,7 @@ def visualization (ori_data, generated_data, analysis, args, run=None):
     plt.ylabel('Data Density Estimate')
     plt.rcParams['pdf.fonttype'] = 42
     plt.title('{} with {:.1f}% missing values'.format(args.dataset, args.missing_value))
-    # path = "./figures/" + args.dataset + "/{:.1f}_histo.pdf".format(args.missing_value)
+    # path = "./visualizations/" + args.dataset + "/{:.1f}_histo.pdf".format(args.missing_value)
     # os.makedirs(os.path.dirname(path), exist_ok=True)
     # plt.savefig(path, 0)
     if run:

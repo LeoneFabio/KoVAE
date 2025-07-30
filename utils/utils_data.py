@@ -22,6 +22,8 @@ import pandas as pd
 
 PROJECT_DIR = pathlib.Path(__file__).resolve().parent.parent
 
+output_dir = './Output_info'
+
 
 def to_tensor(data):
     return torch.from_numpy(data).float()
@@ -149,7 +151,6 @@ def real_data_loading(data_name, seq_len, return_minmax=False):
         ori_data = np.loadtxt(f, delimiter=",")
 
     # Save features (columns' names) in the directory ./Output_info if not exist
-    output_dir = './Output_info'
     file_path = os.path.join(output_dir, f'{data_name}_features.json')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -268,8 +269,13 @@ def preprocess_dataset(path, data_name):
     
     
     ######################## HANDLE MISSING VALUES ######################################
-    # Fill any remaining NaNs (e.g., missing soc values) 
-    df = df.fillna(method='ffill')
+    # Fill any remaining NaNs (e.g., missing soc values) ->  each missing value is replaced with the last non-missing value above it in the same column
+    #df = df.fillna(method='ffill')
+    
+    #OR
+    
+    # Drop rows with missing values
+    df = df.dropna()
     ######################## KEEP STUDYING THE BEST OPTION ##############################
     
     # Ensure all values are float-compatible (0/1 instead of True/False)
@@ -277,7 +283,6 @@ def preprocess_dataset(path, data_name):
     
 
     # Save the processed dataset
-    output_dir = './Output_info'
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -369,7 +374,6 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                     data = np.loadtxt(f, delimiter=",")
 
                 # Save features (columns' names) in the directory ./Output_info if not exist
-                output_dir = './Output_info'
                 file_path = os.path.join(output_dir, f'{data_name}_features.json')
                 if not os.path.exists(output_dir):
                     os.makedirs(output_dir)
@@ -429,7 +433,6 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                         data = np.loadtxt(f, delimiter=",")
 
                     # Save features (columns' names) in the directory ./Output_info if not exist
-                    output_dir = './Output_info'
                     file_path = os.path.join(output_dir, f'{data_name}_features.json')
                     if not os.path.exists(output_dir):
                         os.makedirs(output_dir)

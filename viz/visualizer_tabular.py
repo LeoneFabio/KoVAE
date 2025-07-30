@@ -3,7 +3,6 @@ import torch
 import matplotlib.pyplot as plt
 import os
 from viz.latent_traversals import LatentTraverser
-from viz.getter import Getter
 
 class TabularVisualizer:
     def __init__(self, model, output_dir='./visualizations', save_plots=True):
@@ -12,7 +11,6 @@ class TabularVisualizer:
         """
         self.model = model
         self.latent_traverser = LatentTraverser(model.latent_spec)
-        self.getter = Getter(model)
         self.save_plots = save_plots
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)

@@ -242,17 +242,7 @@ class KoVAE(nn.Module):
         batch_size = x.size(0)
 
         loss = 0.0
-        agg_losses = []
-        
-        
-        print("x min/max/mean:", x.min().item(), x.max().item(), x.mean().item())
-        print("x_rec min/max/mean:", x_rec.min().item(), x_rec.max().item(), x_rec.mean().item())
-
-        if torch.isnan(x).any():
-            print("[NaN WARNING] x contains NaNs")
-        if torch.isnan(x_rec).any():
-            print("[NaN WARNING] x_rec contains NaNs")
-            
+        agg_losses = []            
 
 
         # --- 1. Reconstruction Loss ---
@@ -270,14 +260,6 @@ class KoVAE(nn.Module):
         if self.is_continuous and z_dist.get('cont') is not None:
             z_post_mean, z_post_logvar = z_dist['cont']
             z_prior_mean, z_prior_logvar = z_prior_dist['cont']
-            
-            print("z_post_mean min/max/mean:", z_post_mean.min().item(), z_post_mean.max().item(), z_post_mean.mean().item())
-            print("z_post_logvar min/max/mean:", z_post_logvar.min().item(), z_post_logvar.max().item(), z_post_logvar.mean().item())
-
-            if torch.isnan(z_post_mean).any():
-                print("[NaN WARNING] z_post_mean has NaNs")
-            if torch.isnan(z_post_logvar).any():
-                print("[NaN WARNING] z_post_logvar has NaNs")
 
     
             kl_cont = losses.kl_normal_loss(z_post_mean, z_post_logvar, z_prior_mean, z_prior_logvar)
@@ -287,13 +269,6 @@ class KoVAE(nn.Module):
         # Discrete KL
         if self.is_discrete and z_dist.get('disc') is not None and z_prior_dist.get('disc') is not None:
             for post_logit, prior_logit in zip(z_dist['disc'], z_prior_dist['disc']):
-                print("post_logit min/max/mean:", post_logit.min().item(), post_logit.max().item(), post_logit.mean().item())
-                print("prior_logit min/max/mean:", prior_logit.min().item(), prior_logit.max().item(), prior_logit.mean().item())
-
-                if torch.isnan(post_logit).any():
-                    print("[NaN WARNING] post_logit has NaNs")
-                if torch.isnan(prior_logit).any():
-                    print("[NaN WARNING] prior_logit has NaNs")
                 # Posterior uses softmax over logits (already in z_dist)
                 kl_disc = losses.kl_categorical_loss(post_logit, prior_logit)
                 kl_loss += kl_disc
@@ -304,13 +279,12 @@ class KoVAE(nn.Module):
 
         # --- 3. Predictive Loss on Latent Prior ---
         if a2 > 0:
-            print("z_prior_sample[0] min/max/mean:", z_prior_sample[0].min().item(), z_prior_sample[0].max().item(), z_prior_sample[0].mean().item())
-        
-        if torch.isnan(z_prior_sample[0]).any():
-            print("[NaN WARNING] z_prior_sample[0] has NaNs")
-
-            _, _, pred_err_prior = self.compute_operator_and_pred(z_prior_sample)
-            loss += a2 * pred_err_prior
+            # Check for valid latent prior sample
+            if not torch.isnan(z_prior_sample[0]).any():
+                _, _, pred_err_prior = self.compute_operator_and_pred(z_prior_sample)
+                loss += a2 * pred_err_prior
+            else:
+                pred_err_prior = torch.tensor(0.0, device=x.device)
         else:
             pred_err_prior = torch.tensor(0.0, device=x.device)
 
@@ -342,18 +316,8 @@ class KoVAE(nn.Module):
         disc_logits = [[] for _ in range(self.num_disc_latents)]  # Track logits over time
 
         for _ in range(seq_len):
-            
-            print("z_t before GRU min/max/mean:", z_t.min().item(), z_t.max().item(), z_t.mean().item())
-            if torch.isnan(z_t).any():
-                print("[NaN WARNING] z_t has NaNs BEFORE GRU")
-
             h_t = self.z_prior_gru(z_t, h_t)
             
-            print("z_prior loop -- h_t min/max/mean:", h_t.min().item(), h_t.max().item(), h_t.mean().item())
-            if torch.isnan(h_t).any():
-                print("[NaN WARNING] h_t has NaNs")
-
-
             z_parts = []
 
             if self.is_continuous:
@@ -374,8 +338,7 @@ class KoVAE(nn.Module):
                     
 
                     z_parts.append(disc_sample)
-            print("z_t END OF THE ITERATION min/max/mean")
-            print(z_parts)
+                    
             z_t = torch.cat(z_parts, dim=1)
            
             z_seq.append(z_t)
@@ -440,15 +403,11 @@ class KoVAE(nn.Module):
             # Reparameterize to create gumbel softmax sample
             log_alpha = torch.log(alpha + EPS)
             logit = (log_alpha + gumbel) / self.temperature
-            print(" ----------------------- LOGITS ------------------------- ")
-            print(logit)
             return F.softmax(logit, dim=1)
         else:
             # In reconstruction mode, pick most likely sample
             max_alpha = torch.argmax(alpha, dim=-1) 
             one_hot_samples = torch.zeros_like(alpha)
-            print("one_hot_samples shape:")
-            print(one_hot_samples.shape)
             # On axis 1 of one_hot_samples, scatter the value 1 at indices
             # max_alpha. Note the view is because scatter_ only accepts 2D
             # tensors.

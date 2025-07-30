@@ -229,35 +229,55 @@ def main(args):
     
 
     #PLOTS -> Visualization of reconstruction, generated data and latent traversals
-    # After training the model
+    
     visualizer = TabularVisualizer(model)
     
     visualizer.reconstructions(original, recon)
-    visualizer.samples(generated_data_denormalized)
-    for cont_idx in range(args.z_dim):
-        visualizer.latent_traversal(cont_idx=cont_idx)
-    for disc_idx in range(len(disc_dim)):
-        visualizer.latent_traversal(disc_idx=disc_idx)
+    if args.dataset == 'EV':
+        visualizer.samples(generated_data_denormalized)
+    else:
+        visualizer.samples(generated_data)
+    if 'cont' in latent_spec:    
+        for cont_idx in range(args.z_dim):
+            visualizer.latent_traversal(cont_idx=cont_idx)
+    if 'disc' in latent_spec:
+        for disc_idx in range(len(disc_dim)):
+            visualizer.latent_traversal(disc_idx=disc_idx)
 
 
-
-
-    ori_data = list()
-    for data in train_loader:
-        ori_data.append(data['original_data'].detach().cpu().numpy())
-    ori_data = np.vstack(ori_data)
-
+    #EVALUATION PART ---- Evaluate the generated data through Discriminative score and Predictive score
     from metrics.discriminative_torch import discriminative_score_metrics
-    # deterministic eval
+    from metrics.predictive_metrics import predictive_score_metrics
+    from metrics.visualization_metrics import visualization
     args.device = set_seed_device(args.seed)
+    metric_iterations = 10
+    
+    '''# Discriminative eval
     disc_res = []
-    for ii in range(10):
-        dsc = discriminative_score_metrics(ori_data, generated_data, args)
+    for ii in range(metric_iterations):
+        dsc = discriminative_score_metrics(original, generated_data, args)
         disc_res.append(dsc)
     disc_mean, disc_std = np.round(np.mean(disc_res), 4), np.round(np.std(disc_res), 4)
 
     print('test/disc_mean: ', disc_mean)
     print('test/disc_std: ', disc_std)
+    print('-'*40)
+    
+    # Predictive eval
+    pred_res = []
+    for ii in range(metric_iterations):
+        pred = predictive_score_metrics(original, generated_data)
+        pred_res.append(pred)
+    pred_mean, pred_std = np.round(np.mean(pred_res), 4), np.round(np.std(pred_res), 4)
+    
+    print('test/pred_mean: ', pred_mean)
+    print('test/pred_std: ', pred_std)
+    print('-'*40)'''
+    
+    # Visualization eval
+    visualization(original, recon, 'pca', args)
+    visualization(original, recon, 'tsne', args)
+    
 
 
 if __name__ == '__main__':

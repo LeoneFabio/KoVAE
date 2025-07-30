@@ -14,6 +14,8 @@ import torch.optim as optim
 import logging
 from utils.utils_data import real_data_loading, sine_data_generation, inverse_MinMaxScaler
 from utils.utils import agg_losses, log_losses, set_seed_device
+from viz.getter import Getter
+from viz.visualizer_tabular import TabularVisualizer
 
 
 def define_args():
@@ -95,9 +97,9 @@ def main(args):
             ori_data, min_data, max_data = real_data_loading(args.dataset, args.seq_len, return_minmax=True)
         else:
             ori_data= real_data_loading(args.dataset, args.seq_len)
-        ori_data = torch.Tensor(np.array(ori_data))
-        args.inp_dim = ori_data.shape[-1]
-        train_set = Data.TensorDataset(ori_data)
+            ori_data = torch.Tensor(np.array(ori_data))
+            args.inp_dim = ori_data.shape[-1]
+            train_set = Data.TensorDataset(ori_data)
 
 
     def seed_worker(worker_id):
@@ -113,8 +115,14 @@ def main(args):
 
     logging.info(args.dataset + ' dataset is ready.')
 
+    disc_dim = None
+    if args.dataset == 'EV':
+        disc_dim = [2, 3]
+        latent_spec = {'cont': args.z_dim, 'disc': disc_dim}
+    else:
+        latent_spec = {'cont': args.z_dim}
     # create model
-    model = KoVAE(args).to(device=args.device)
+    model = KoVAE(args, latent_spec).to(device=args.device)
 
     # optimizer
     optimizer = optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay)
@@ -137,9 +145,9 @@ def main(args):
             X = data[0].to(args.device)
 
             optimizer.zero_grad()
-            x_rec, Z_enc, Z_enc_prior = model(X)
+            x_rec, z_dist, z_prior_dist, z_prior_sample = model(X)
 
-            losses = model.loss(X, x_rec, Z_enc, Z_enc_prior)  # x_rec, x_pred_rec, z, z_pred_, Ct
+            losses = model.loss(X, x_rec, z_dist, z_prior_dist, z_prior_sample)  
             losses[0].backward()
             optimizer.step()
 
@@ -169,32 +177,98 @@ def main(args):
     # save generated data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
     file_path = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
-
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    
     if args.dataset == 'EV':
         torch.save(torch.from_numpy(generated_data_denormalized), file_path)
     else:
         torch.save(torch.from_numpy(generated_data), file_path)
-
-    ori_data = list()
+    
+    
+    
+    
+    #Reconstruct data
+    model.eval()
+    with torch.no_grad():
+        recon = []
+        for data in train_loader:
+            recon.append(model(data[0].to(args.device), isTraining=False)[0])
+    recon = np.vstack(recon)
+    if args.dataset == 'EV':
+        # De-normalize the reconstructed data
+        recon = inverse_MinMaxScaler(recon, min_data, max_data)
+    file_path = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.pt')
+    torch.save(torch.from_numpy(recon), file_path)
+    logging.info(f"Reconstructed data saved to {file_path}")
+    
+    
+    
+    # Embedded original data -> data reference from reconstruction
+    original = list()
     for data in train_loader:
-        ori_data.append(data[0].detach().cpu().numpy())
-    ori_data = np.vstack(ori_data)
+        original.append(data[0].detach().cpu().numpy())
+    original = np.vstack(original)
+    if args.dataset == 'EV':
+        # De-normalize the original data
+        original = inverse_MinMaxScaler(original, min_data, max_data)
+    file_path = os.path.join(output_dir, f'{args.dataset}_original_data.pt')
+    torch.save(torch.from_numpy(original), file_path)
+    logging.info(f"Original data saved to {file_path}")
+    
+    
+    
+    
+    #PLOTS -> Visualization of reconstruction, generated data and latent traversals
+    visualizer = TabularVisualizer(model)
+    
+    visualizer.reconstructions(original, recon)
+    if args.dataset == 'EV':
+        visualizer.samples(generated_data_denormalized)
+    else:
+        visualizer.samples(generated_data)
+    if 'cont' in latent_spec:    
+        for cont_idx in range(args.z_dim):
+            visualizer.latent_traversal(cont_idx=cont_idx)
+    if 'disc' in latent_spec:
+        for disc_idx in range(len(disc_dim)):
+            visualizer.latent_traversal(disc_idx=disc_idx)
 
+
+    
+    
+    #EVALUATION PART ---- Evaluate the generated data through Discriminative score and Predictive score
     from metrics.discriminative_torch import discriminative_score_metrics
-    # deterministic eval
+    from metrics.predictive_metrics import predictive_score_metrics
+    from metrics.visualization_metrics import visualization
     args.device = set_seed_device(args.seed)
+    metric_iterations = 10
+    
+    '''# Discriminative eval
     disc_res = []
-    for ii in range(10):
-        dsc = discriminative_score_metrics(ori_data, generated_data, args)
+    for ii in range(metric_iterations):
+        dsc = discriminative_score_metrics(original, generated_data, args)
         disc_res.append(dsc)
     disc_mean, disc_std = np.round(np.mean(disc_res), 4), np.round(np.std(disc_res), 4)
 
     print('test/disc_mean: ', disc_mean)
     print('test/disc_std: ', disc_std)
+    print('-'*40)
+    
+    # Predictive eval
+    pred_res = []
+    for ii in range(metric_iterations):
+        pred = predictive_score_metrics(original, generated_data)
+        pred_res.append(pred)
+    pred_mean, pred_std = np.round(np.mean(pred_res), 4), np.round(np.std(pred_res), 4)
+    
+    print('test/pred_mean: ', pred_mean)
+    print('test/pred_std: ', pred_std)
+    print('-'*40)'''
+    
+    # Visualization eval
+    visualization(original, generated_data, 'pca', args)
+    visualization(original, generated_data, 'tsne', args)
 
 
 if __name__ == '__main__':
