@@ -398,15 +398,15 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                     self.min_data = min_data
                     self.max_data = max_data
 
-                total_length = len(norm_data)
-                time = np.array(range(total_length)).reshape(-1, 1)
                 
-
                 # Padding for small datasets
                 if len(norm_data) < seq_len:
                     pad_size = seq_len - len(norm_data)
                     padding = np.repeat(norm_data[-1:], pad_size, axis=0)
                     norm_data = np.vstack([norm_data, padding])
+
+                total_length = len(norm_data)
+                time = np.array(range(total_length)).reshape(-1, 1)
 
 
                 self.original_sample = []
