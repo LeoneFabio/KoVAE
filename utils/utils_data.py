@@ -290,7 +290,6 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
     
-    print(df.head(15))  # Debug print to check the first few rows of the processed DataFrame
 
     # Save the processed dataset
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
@@ -393,6 +392,11 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 # Do NOT flip the dataset
                 # Normalize the dataset
                 norm_data, min_data, max_data = MinMaxScaler(data, return_minmax=True)
+                
+                print(f"Norm data: {norm_data[:5]}")
+                print(f"Min data: {min_data}")
+                print(f"Max data: {max_data}")
+
                 if return_minmax:
                     self.min_data = min_data
                     self.max_data = max_data
