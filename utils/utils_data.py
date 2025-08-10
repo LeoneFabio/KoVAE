@@ -220,13 +220,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     ######################### FILTERING SECTION #######################################
     # Apply filtering before encoding
     if event is not None:
-        print('BEFORE filtering event')
-        print(df.head(5))
-        print(df['event'].unique())
         df = df[df['event'].str.strip().str.lower() == event.lower()]
-        print('AFTER filtering event')
-        print(df.head(5))
-        print(df['event'].unique())
 
     if charge_mode is not None:
         df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
@@ -255,7 +249,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)
     
     
-    
+    print(df.head(15))
     
     """One-hot encoding"""
     
