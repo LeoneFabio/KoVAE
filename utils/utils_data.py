@@ -248,8 +248,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
 
     df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)
     
-    
-    print(df.head(15))
+
     
     """One-hot encoding"""
     
@@ -291,6 +290,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
     
+    print(df.head(15))  # Debug print to check the first few rows of the processed DataFrame
 
     # Save the processed dataset
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
