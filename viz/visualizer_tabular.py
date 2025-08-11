@@ -19,8 +19,6 @@ class TabularVisualizer:
         """
         Visualize original vs reconstructed tabular sequences.
         """
-        print('x->', x.shape)
-        print('x_rec->', x_rec.shape)
         n_plot = min(max_samples, x.shape[0])
         fig, axs = plt.subplots(n_plot, x.shape[2], figsize=(x.shape[2] * 3, n_plot * 2))
         for i in range(n_plot):
