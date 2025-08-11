@@ -222,11 +222,15 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     if event is not None:
         df = df[df['event'].str.strip().str.lower() == event.lower()]
 
+    print('before filtering')
+    print(df.shape)
     if charge_mode is not None:
         if charge_mode == '0':
             df = df[df['charge_mode'].isna()]
         else:
             df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
+    print('after filtering')
+    print(df.shape)
     ###################################################################################
     
     
