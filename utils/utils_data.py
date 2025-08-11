@@ -409,7 +409,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 time = np.array(range(total_length)).reshape(-1, 1)
 
 
-                '''self.original_sample = []
+                self.original_sample = []
                 ori_seq_data = []
 
                 for i in range(len(norm_data) - seq_len + 1):
@@ -419,12 +419,6 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 self.original_sample = ori_seq_data.copy()
                 orig_samples_np = np.array(self.original_sample)
                 self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])
-                '''
-                
-                self.original_sample = np.array([
-                    norm_data[i: i + seq_len] for i in range(total_length - seq_len + 1)
-                ])
-                self.X_mean = np.mean(self.original_sample, axis=0, keepdims=True)
 
                 # Do NOT mix the dataset
                 '''idx = torch.randperm(len(ori_seq_data))
@@ -442,7 +436,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 for i in range(len(norm_data) - seq_len + 1):
                     x = norm_data[i: i + seq_len]
                     seq_data.append(x)
-                self.samples = np.array(seq_data)
+                self.samples = seq_data.copy()
                 '''for i in range(len(seq_data)):
                     self.samples.append(seq_data[idx[i]])'''
             else:
