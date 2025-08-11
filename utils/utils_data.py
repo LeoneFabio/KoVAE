@@ -408,9 +408,9 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 
                 # Padding for small datasets
                 if len(norm_data) < seq_len:
-                    self.seq_len = len(norm_data)//2
-                else:
-                    self.seq_len = seq_len
+                    seq_len = len(norm_data)//2
+
+                self.seq_len = seq_len
 
                 total_length = len(norm_data)
                 time = np.array(range(total_length)).reshape(-1, 1)
