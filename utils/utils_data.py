@@ -223,6 +223,8 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
         df = df[df['event'].str.strip().str.lower() == event.lower()]
 
     if charge_mode is not None:
+        print(charge_mode)
+        print(type(charge_mode))
         df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
     ###################################################################################
     
