@@ -237,9 +237,9 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     def encode_charge_mode(val):
         if pd.isna(val):
             return 0
-        elif str(val).strip() == '120':
+        elif '120' in str(val).strip():
             return 1
-        elif str(val).strip() == '240':
+        elif '240' in str(val).strip():
             return 2
         elif 'DC' in str(val):
             return 3
