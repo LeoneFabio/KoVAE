@@ -556,6 +556,7 @@ def create_timeDataset_irregular(data_name, seq_len, missing_rate=0.0, event=Non
       - min_data: min values of the dataset
       - max_data: max values of the dataset
     """
+    seq_len = 10
     dataset = TimeDataset_irregular(seq_len, data_name, missing_rate=missing_rate, event=event, charge_mode=charge_mode, return_minmax=return_minmax)    
     if return_minmax:
         return dataset, dataset.min_data, dataset.max_data
