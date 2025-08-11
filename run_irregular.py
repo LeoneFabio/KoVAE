@@ -118,7 +118,7 @@ def main(args):
     else:
         dataset = create_timeDataset_irregular(args.dataset, args.seq_len, args.missing_value)
 
-    args.seq_len = 21
+    args.seq_len = 20
     def seed_worker(worker_id):
         worker_seed = torch.initial_seed() % 2 ** 32
         np.random.seed(worker_seed)
