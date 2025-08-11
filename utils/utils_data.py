@@ -408,9 +408,9 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 
                 # Padding for small datasets
                 if len(norm_data) < seq_len:
-                    pad_size = seq_len - len(norm_data)
-                    padding = np.repeat(norm_data[-1:], pad_size, axis=0)
-                    norm_data = np.vstack([norm_data, padding])
+                    self.seq_len = len(norm_data)//2
+                else:
+                    self.seq_len = seq_len
 
                 total_length = len(norm_data)
                 time = np.array(range(total_length)).reshape(-1, 1)
@@ -556,10 +556,9 @@ def create_timeDataset_irregular(data_name, seq_len, missing_rate=0.0, event=Non
       - min_data: min values of the dataset
       - max_data: max values of the dataset
     """
-    seq_len = 20
     dataset = TimeDataset_irregular(seq_len, data_name, missing_rate=missing_rate, event=event, charge_mode=charge_mode, return_minmax=return_minmax)    
     if return_minmax:
-        return dataset, dataset.min_data, dataset.max_data
+        return dataset, dataset.min_data, dataset.max_data, dataset.seq_len
     else:
         return dataset
 
