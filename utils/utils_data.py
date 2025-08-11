@@ -223,30 +223,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
         df = df[df['event'].str.strip().str.lower() == event.lower()]
 
     if charge_mode is not None:
-        # Normalize input
-        cm_raw = charge_mode
-        cm_str = str(cm_raw).strip().lower()
-
-        # Prepare string and numeric versions of the column
-        s = df['charge_mode'].astype(str).str.strip().str.lower()
-        num = pd.to_numeric(df['charge_mode'], errors='coerce')  # numeric values or NaN
-
-        if cm_str in ('0', 'none', 'nan', ''):
-            # Treat "0" as either numeric 0 or missing / textual '0'
-            mask = df['charge_mode'].isna() | (num == 0) | s.isin(['0', 'none', 'nan', ''])
-        elif cm_str == 'dc':
-            # Match any string containing 'dc' (e.g. 'DC Charging'), case-insensitive
-            mask = s.str.contains('dc', na=False)
-        else:
-            # Try numeric comparison first (for '120', 120, etc.)
-            try:
-                cm_num = float(cm_str)
-                mask = (num == cm_num) | (s == cm_str)
-            except ValueError:
-                # fallback to exact string match
-                mask = (s == cm_str)
-
-        df = df[mask]
+        df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
     ###################################################################################
     
     
