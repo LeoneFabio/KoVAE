@@ -385,8 +385,14 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                     print(header)
                     data = np.loadtxt(f, delimiter=",")
 
-                print('data len')
-                print(len(data))
+                # Handling small datasets
+                if len(data) < 3:
+                    raise ValueError(f"Not enough data after filtering. Needed at least 3 rows, got {len(data)}.")
+
+                if len(data) < seq_len:
+                    seq_len = len(data)//2
+                self.seq_len = seq_len
+
                 # Save features (columns' names) in the directory ./Output_info if not exist
                 file_path = os.path.join(output_dir, f'{data_name}_features.json')
                 if not os.path.exists(output_dir):
@@ -404,11 +410,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                     self.max_data = max_data
 
                 
-                # Padding for small datasets
-                if len(norm_data) < seq_len:
-                    seq_len = len(norm_data)//2
-
-                self.seq_len = seq_len
+                
 
                 total_length = len(norm_data)
                 time = np.array(range(total_length)).reshape(-1, 1)
