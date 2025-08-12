@@ -5,6 +5,8 @@ import tensorflow as tf
 import neptune.new as neptune
 import random
 import argparse
+import pandas as pd
+import json
 
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -208,33 +210,42 @@ def main(args):
 
     # save data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
-    file_path = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
+    output_info_dir = './Output_info'
+    file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
+    file_path_csv = os.path.join(output_dir, f'{args.dataset}_generated_data.csv')
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     if args.dataset == 'EV':
-        torch.save(torch.from_numpy(generated_data_denormalized), file_path)
+        torch.save(torch.from_numpy(generated_data_denormalized), file_path_torch_tensor)
+        #generated_data_denormalized is a numpy array (n, seq_len, num_features), now I have to create a df considering the header names saved in output_info_dir/EV_features.json
+        with open(os.path.join(output_info_dir, 'EV_features.json'), 'r') as f:
+            features = json.load(f)
+
+        df = pd.DataFrame(generated_data_denormalized.reshape(-1, generated_data_denormalized.shape[-1]), columns=features)
+        df.to_csv(file_path_csv, index=False)
+
     else:
-        torch.save(torch.from_numpy(generated_data), file_path)
-    logging.info(f"Generated data saved to {file_path}")
+        torch.save(torch.from_numpy(generated_data), file_path_torch_tensor)
+    logging.info(f"Generated data saved to {file_path_torch_tensor}")
     
     #Reconstruct data
     recon = getter.get_reconstructed_data(train_loader, time, final_index)
     if args.dataset == 'EV':
         # De-normalize the reconstructed data
         recon = inverse_MinMaxScaler(recon, min_data, max_data)
-    file_path = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.pt')
-    torch.save(torch.from_numpy(recon), file_path)
-    logging.info(f"Reconstructed data saved to {file_path}")
+    file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.pt')
+    torch.save(torch.from_numpy(recon), file_path_torch_tensor)
+    logging.info(f"Reconstructed data saved to {file_path_torch_tensor}")
     
     # Embedded original data -> data reference from reconstruction 
     original = getter.get_original_data(train_loader)
     if args.dataset == 'EV':
         # De-normalize the original data
         original = inverse_MinMaxScaler(original, min_data, max_data)
-    file_path = os.path.join(output_dir, f'{args.dataset}_original_data.pt')
-    torch.save(torch.from_numpy(original), file_path)
-    logging.info(f"Original data saved to {file_path}")
+    file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_original_data.pt')
+    torch.save(torch.from_numpy(original), file_path_torch_tensor)
+    logging.info(f"Original data saved to {file_path_torch_tensor}")
     
     
 
