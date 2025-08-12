@@ -213,15 +213,16 @@ def main(args):
     output_info_dir = './Output_info'
     file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
     file_path_csv = os.path.join(output_dir, f'{args.dataset}_generated_data.csv')
+    
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    
+    with open(os.path.join(output_info_dir, 'EV_features.json'), 'r') as f:
+            features = json.load(f)
 
     if args.dataset == 'EV':
         torch.save(torch.from_numpy(generated_data_denormalized), file_path_torch_tensor)
         #generated_data_denormalized is a numpy array (n, seq_len, num_features), now I have to create a df considering the header names saved in output_info_dir/EV_features.json
-        with open(os.path.join(output_info_dir, 'EV_features.json'), 'r') as f:
-            features = json.load(f)
-
         df = pd.DataFrame(generated_data_denormalized.reshape(-1, generated_data_denormalized.shape[-1]), columns=features)
         df.to_csv(file_path_csv, index=False)
 
@@ -235,7 +236,10 @@ def main(args):
         # De-normalize the reconstructed data
         recon = inverse_MinMaxScaler(recon, min_data, max_data)
     file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.pt')
+    file_path_csv = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.csv')
     torch.save(torch.from_numpy(recon), file_path_torch_tensor)
+    df = pd.DataFrame(recon.reshape(-1, recon.shape[-1]), columns=features)
+    df.to_csv(file_path_csv, index=False)
     logging.info(f"Reconstructed data saved to {file_path_torch_tensor}")
     
     # Embedded original data -> data reference from reconstruction 
@@ -244,7 +248,10 @@ def main(args):
         # De-normalize the original data
         original = inverse_MinMaxScaler(original, min_data, max_data)
     file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_original_data.pt')
+    file_path_csv = os.path.join(output_dir, f'{args.dataset}_original_data.csv')
     torch.save(torch.from_numpy(original), file_path_torch_tensor)
+    df = pd.DataFrame(original.reshape(-1, original.shape[-1]), columns=features)
+    df.to_csv(file_path_csv, index=False)
     logging.info(f"Original data saved to {file_path_torch_tensor}")
     
     
