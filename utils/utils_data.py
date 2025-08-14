@@ -224,7 +224,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
 
     if charge_mode is not None:
         if charge_mode == '0':
-            df = df[df['charge_mode'].isna()]
+            df = df[(df['charge_mode'].isna()) | (df['charge_mode'].astype(str) == '0')]
         else:
             df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
     ###################################################################################
