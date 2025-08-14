@@ -220,10 +220,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     ######################### FILTERING SECTION #######################################
     # Apply filtering before encoding
     if event is not None:
-        # df size
-        print(f'Original df size: {df.shape}')
         df = df[df['event'].str.strip().str.lower() == event.lower()]
-        print(f'Filtered df size 1: {df.shape}')
 
     if charge_mode is not None:
         if charge_mode == '0':
@@ -232,7 +229,6 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
             df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
     ###################################################################################
     
-    print(f'Filtered df size 2: {df.shape}')
 
     """ Label encoding """
     
@@ -289,7 +285,6 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     #df = df.fillna(method='ffill')
     
     #OR
-    print(f'Filtered df size 3: {df.shape}')
     # Drop rows with missing values
     df = df.dropna()
     ######################## KEEP STUDYING THE BEST OPTION ##############################
