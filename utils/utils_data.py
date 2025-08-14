@@ -289,15 +289,15 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     #df = df.fillna(method='ffill')
     
     #OR
-    
+    print(f'Filtered df size 3: {df.shape}')
     # Drop rows with missing values
     df = df.dropna()
     ######################## KEEP STUDYING THE BEST OPTION ##############################
-    
+    print(f'Filtered df size 4: {df.shape}')
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
     
-    print(f'Filtered df size 3: {df.shape}')
+    print(f'Filtered df size 5: {df.shape}')
 
     # Save the processed dataset
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
