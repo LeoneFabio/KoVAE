@@ -283,7 +283,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')'''
     
     
-    
+    '''
     ######################## HANDLE MISSING VALUES ######################################
     # Fill any remaining NaNs (e.g., missing soc values) ->  each missing value is replaced with the last non-missing value above it in the same column
     #df = df.fillna(method='ffill')
@@ -292,7 +292,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     print(f'Filtered df size 3: {df.shape}')
     # Drop rows with missing values
     df = df.dropna()
-    ######################## KEEP STUDYING THE BEST OPTION ##############################
+    ######################## KEEP STUDYING THE BEST OPTION ##############################'''
     print(f'Filtered df size 4: {df.shape}')
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
