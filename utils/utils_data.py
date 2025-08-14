@@ -208,8 +208,8 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     df = df.iloc[:, 1:]
 
     # Convert timestamps to datetime
-    df['timestamp'] = pd.to_datetime(df['timestamp'], dayfirst=True, errors='coerce')
-    df['end_time'] = pd.to_datetime(df['end_time'], dayfirst=True, errors='coerce')
+    df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+    df['end_time'] = pd.to_datetime(df['end_time'], errors='coerce')
 
     # Compute event duration in minutes
     df['duration_minutes'] = (df['end_time'] - df['timestamp']).dt.total_seconds() / 60
@@ -283,7 +283,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')'''
     
     
-    '''
+    
     ######################## HANDLE MISSING VALUES ######################################
     # Fill any remaining NaNs (e.g., missing soc values) ->  each missing value is replaced with the last non-missing value above it in the same column
     #df = df.fillna(method='ffill')
@@ -292,22 +292,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     print(f'Filtered df size 3: {df.shape}')
     # Drop rows with missing values
     df = df.dropna()
-    ######################## KEEP STUDYING THE BEST OPTION ##############################'''
-    # Find rows with at least one missing value
-    missing_rows = df[df.isna().any(axis=1)]
-
-    # Print the first 5 such rows (or fewer if not many)
-    if missing_rows.empty:
-        print("✅ No missing values found in the dataset.")
-    else:
-        print("⚠️ Missing values detected in these rows:")
-        print(missing_rows.head())  # you can change head() number to show more rows
-        
-    print(f'Filtered df size 4: {df.shape}')
-    # Ensure all values are float-compatible (0/1 instead of True/False)
-    df = df.astype(float)
-    
-    print(f'Filtered df size 5: {df.shape}')
+    ######################## KEEP STUDYING THE BEST OPTION ##############################
 
     # Save the processed dataset
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
