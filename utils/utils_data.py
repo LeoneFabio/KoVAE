@@ -220,7 +220,10 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     ######################### FILTERING SECTION #######################################
     # Apply filtering before encoding
     if event is not None:
+        # df size
+        print(f'Original df size: {df.shape}')
         df = df[df['event'].str.strip().str.lower() == event.lower()]
+        print(f'Filtered df size: {df.shape}')
 
     if charge_mode is not None:
         if charge_mode == '0':
