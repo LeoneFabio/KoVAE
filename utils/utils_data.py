@@ -293,6 +293,16 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Drop rows with missing values
     df = df.dropna()
     ######################## KEEP STUDYING THE BEST OPTION ##############################'''
+    # Find rows with at least one missing value
+    missing_rows = df[df.isna().any(axis=1)]
+
+    # Print the first 5 such rows (or fewer if not many)
+    if missing_rows.empty:
+        print("✅ No missing values found in the dataset.")
+    else:
+        print("⚠️ Missing values detected in these rows:")
+        print(missing_rows.head())  # you can change head() number to show more rows
+        
     print(f'Filtered df size 4: {df.shape}')
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
