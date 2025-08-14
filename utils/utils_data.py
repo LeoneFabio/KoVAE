@@ -223,7 +223,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
         # df size
         print(f'Original df size: {df.shape}')
         df = df[df['event'].str.strip().str.lower() == event.lower()]
-        print(f'Filtered df size: {df.shape}')
+        print(f'Filtered df size 1: {df.shape}')
 
     if charge_mode is not None:
         if charge_mode == '0':
@@ -232,7 +232,8 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
             df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
     ###################################################################################
     
-    
+    print(f'Filtered df size 2: {df.shape}')
+
     """ Label encoding """
     
     # Encode 'event': trip → 0, charge → 1
@@ -296,6 +297,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Ensure all values are float-compatible (0/1 instead of True/False)
     df = df.astype(float)
     
+    print(f'Filtered df size 3: {df.shape}')
 
     # Save the processed dataset
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
