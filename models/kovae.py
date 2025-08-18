@@ -170,7 +170,7 @@ class KoVAE(nn.Module):
         self.names = ['total', 'rec', 'kl', 'pred_prior']
 
     
-    def forward(self, x, time=None, final_index=None, isTraining=True):
+    def forward(self, x, time=None, final_index=None):
 
         # ------------- ENCODING PART -------------
         if time is not None and final_index is not None:
@@ -190,12 +190,12 @@ class KoVAE(nn.Module):
                 z_dist['disc'].append(F.softmax(z_alpha(z), dim=1))
         
         # Reparameterization trick
-        z_post = self.reparameterize(z_dist, random_sampling=True, isTraining=isTraining)
+        z_post = self.reparameterize(z_dist, random_sampling=True)
 
 
 
         #  ------------- PRIOR PART -------------
-        z_prior_dist, z_prior_sample = self.sample_prior(z.size(0), self.seq_len, random_sampling=True, isTraining=isTraining)
+        z_prior_dist, z_prior_sample = self.sample_prior(z.size(0), self.seq_len, random_sampling=True)
 
 
         x_rec = self.decoder(z_post)
@@ -297,14 +297,14 @@ class KoVAE(nn.Module):
 
 
 
-    def sample_data(self, n_sample, isTraining=True):
+    def sample_data(self, n_sample):
         # sample from prior
-        _, z_out = self.sample_prior(n_sample, self.seq_len, random_sampling=True, isTraining=isTraining)
+        _, z_out = self.sample_prior(n_sample, self.seq_len, random_sampling=True)
         x_rec = self.decoder(z_out)
         return x_rec
 
     # ------ sample z purely from learned LSTM prior with arbitrary seq ------
-    def sample_prior(self, n_sample, seq_len, random_sampling=True, isTraining=False):
+    def sample_prior(self, n_sample, seq_len, random_sampling=True):
         device = device_available()
 
         if random_sampling:
@@ -328,7 +328,7 @@ class KoVAE(nn.Module):
             if self.is_continuous:
                 mean_t = self.z_prior_mean(h_t)
                 logvar_t = self.z_prior_logvar(h_t)
-                cont_sample = self.sample_normal(mean_t, logvar_t, isTraining)
+                cont_sample = self.sample_normal(mean_t, logvar_t, random_sampling=random_sampling)
 
                 cont_means.append(mean_t)
                 cont_logvars.append(logvar_t)
@@ -339,8 +339,7 @@ class KoVAE(nn.Module):
                     logits = alpha_layer(h_t)  # raw logits
                     disc_logits[i].append(logits)
                     alpha = F.softmax(logits, dim=1)
-                    disc_sample = self.sample_gumbel_softmax(alpha, isTraining)
-                    
+                    disc_sample = self.sample_gumbel_softmax(alpha, random_sampling=random_sampling)
 
                     z_parts.append(disc_sample)
                     
@@ -366,18 +365,18 @@ class KoVAE(nn.Module):
 
     
     
-    def reparameterize(self, latent_dist, random_sampling=True, isTraining=True):
+    def reparameterize(self, latent_dist, random_sampling=True):
         # Reparametrization occurs only if random sampling is set to true, otherwise mean is returned
         if random_sampling is True:
             latent_sample = []
             if self.is_continuous:
                 mean, logvar = latent_dist['cont']
-                cont_sample = self.sample_normal(mean, logvar, isTraining)
+                cont_sample = self.sample_normal(mean, logvar, random_sampling=random_sampling)
                 latent_sample.append(cont_sample)
 
             if self.is_discrete:
                 for alpha in latent_dist['disc']:
-                    disc_sample = self.sample_gumbel_softmax(alpha, isTraining)
+                    disc_sample = self.sample_gumbel_softmax(alpha, random_sampling=random_sampling)
                     latent_sample.append(disc_sample)            
             
             # Concatenate continuous and discrete samples into one large sample
@@ -386,9 +385,9 @@ class KoVAE(nn.Module):
             mean, _ = latent_dist['cont']
             return mean
         
-    def sample_normal(self, mean, logvar, isTraining):
+    def sample_normal(self, mean, logvar, random_sampling):
         # Sample from a normal distribution
-        if isTraining:
+        if random_sampling:
             std = torch.exp(0.5 * logvar)
             eps = torch.zeros(std.size()).normal_()
             if torch.cuda.is_available():
@@ -397,9 +396,9 @@ class KoVAE(nn.Module):
         else:
             # Reconstruction mode
             return mean
-    
-    def sample_gumbel_softmax(self, alpha, isTraining):    
-        if isTraining:
+
+    def sample_gumbel_softmax(self, alpha, random_sampling):    
+        if random_sampling:
             # Sample from gumbel distribution
             unif = torch.rand(alpha.size())
             if torch.cuda.is_available():

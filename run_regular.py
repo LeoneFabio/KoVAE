@@ -193,7 +193,7 @@ def main(args):
     with torch.no_grad():
         recon = []
         for data in train_loader:
-            recon.append(model(data[0].to(args.device), isTraining=False)[0])
+            recon.append(model(data[0].to(args.device))[0])
     recon = np.vstack(recon)
     if args.dataset == 'EV':
         # De-normalize the reconstructed data
