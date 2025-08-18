@@ -14,7 +14,7 @@ class Getter():
         with torch.no_grad():
             recon_data = []
             for data in train_loader:
-                recon_data.append(self.model(data['inter'], time, final_index, isTraining=False)[0])
+                recon_data.append(self.model(data['inter'], time, final_index, isTraining=True)[0])
         recon_data = np.vstack(recon_data)
         return recon_data
     
@@ -31,7 +31,7 @@ class Getter():
             generated_data = []
             for data in train_loader:
                 n_sample = data['original_data'].shape[0]
-                generated_data.append(self.model.sample_data(n_sample, isTraining=False).detach().cpu().numpy())
+                generated_data.append(self.model.sample_data(n_sample, isTraining=True).detach().cpu().numpy())
         generated_data = np.vstack(generated_data)
         return generated_data
 

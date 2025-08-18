@@ -297,7 +297,7 @@ class KoVAE(nn.Module):
 
 
 
-    def sample_data(self, n_sample, isTraining=False):
+    def sample_data(self, n_sample, isTraining=True):
         # sample from prior
         _, z_out = self.sample_prior(n_sample, self.seq_len, random_sampling=True, isTraining=isTraining)
         x_rec = self.decoder(z_out)
@@ -307,8 +307,13 @@ class KoVAE(nn.Module):
     def sample_prior(self, n_sample, seq_len, random_sampling=True, isTraining=False):
         device = device_available()
 
-        z_t = torch.zeros(n_sample, self.latent_dim, device=device)
-        h_t = torch.zeros(n_sample, self.hidden_dim, device=device)
+        if random_sampling:
+            # Initialize with random noise instead of zeros
+            z_t = torch.randn(n_sample, self.latent_dim, device=device) * 0.1
+            h_t = torch.randn(n_sample, self.hidden_dim, device=device) * 0.1
+        else:
+            z_t = torch.zeros(n_sample, self.latent_dim, device=device)
+            h_t = torch.zeros(n_sample, self.hidden_dim, device=device)
 
         z_seq = []
         cont_means, cont_logvars = [], []
