@@ -254,6 +254,8 @@ def main(args):
     visualizer = TabularVisualizer(model)
     
     visualizer.reconstructions(original, recon)
+    visualizer.plot_feature_distributions(original, recon, generated_data_denormalized, feature_names=features)
+    
     if args.dataset == 'EV':
         visualizer.samples(generated_data_denormalized)
     else:

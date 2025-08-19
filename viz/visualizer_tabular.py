@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 from viz.latent_traversals import LatentTraverser
 
@@ -14,6 +15,53 @@ class TabularVisualizer:
         self.save_plots = save_plots
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
+
+
+    def plot_feature_distributions(self, real, recon, synthetic, feature_names=None,
+                                filename="pdfs.png", max_features=10):
+        """
+        Plot PDFs (KDE) of real, reconstructed, and synthetic data for each feature.
+        
+        Args:
+            real, recon, synthetic : np.ndarray
+                Shape (num_batch, seq_len, num_features)
+            feature_names : list of str, optional
+            filename : str, filename for saved figure
+            max_features : int, maximum number of features to plot
+            save_dir : str, directory to save figure (if None, will show instead)
+        """
+        # Flatten (num_batch, seq_len) → one big sample pool
+        real_flat = real.reshape(-1, real.shape[-1])
+        recon_flat = recon.reshape(-1, recon.shape[-1])
+        synthetic_flat = synthetic.reshape(-1, synthetic.shape[-1])
+
+        n_features = real_flat.shape[1]
+        n_plot = min(max_features, n_features)
+
+        fig, axs = plt.subplots(n_plot, 1, figsize=(7, 3 * n_plot))
+        if n_plot == 1:
+            axs = [axs]
+
+        for j in range(n_plot):
+            ax = axs[j]
+            fname = feature_names[j] if feature_names is not None else f"Feature {j}"
+
+            sns.kdeplot(real_flat[:, j], ax=ax, label="Real", color="blue", fill=True, alpha=0.3)
+            sns.kdeplot(recon_flat[:, j], ax=ax, label="Reconstruction", color="orange", fill=True, alpha=0.3)
+            sns.kdeplot(synthetic_flat[:, j], ax=ax, label="Synthetic", color="green", fill=True, alpha=0.3)
+
+            ax.set_title(fname)
+            ax.legend()
+
+        plt.tight_layout()
+
+        if self.save_plots:
+            path = os.path.join(self.output_dir, filename)
+            plt.savefig(path, dpi=150)
+            plt.close()
+        else:
+            plt.show()
+
 
     def reconstructions(self, x, x_rec, filename='recon.png', max_samples=8):
         """
