@@ -51,6 +51,19 @@ def inverse_MinMaxScaler(norm_data, min_data, max_data):
     return norm_data * (max_data - min_data + 1e-7) + min_data
 
 
+def discretize_categorical_features(df):
+    # Event: closest to 0 or 1
+    if "event" in df.columns:
+        df["event"] = (df["event"] >= 0.5).astype(int)
+
+    # Charge mode: round to nearest int in {0,1,2,3}
+    if "charge_mode" in df.columns:
+        df["charge_mode"] = df["charge_mode"].round().clip(0, 3).astype(int)
+
+    return df
+
+
+
 def pendulum_nonlinear(num_points, noise, theta=2.4):
     from matplotlib import pylab as plt
     from scipy.special import ellipj, ellipk
@@ -298,45 +311,6 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     print(f'Preprocessing complete. Output saved to {file_path}')
     
     return file_path
-
-def decode_categorical_from_generated(generated_data):
-            """
-            Decode one-hot encoded categorical features (event and charge_mode) 
-            from generated data and reconstruct the dataset with decoded integer labels.
-
-            Consider:
-            - generated_data shape is (batch_size, seq_len, n_features)
-            - event one-hot columns at indices 5 and 6
-            - charge_mode one-hot columns at indices 7, 8, 9
-            """
-
-            # Indices of one-hot encoded categorical features
-            event_cols = [5, 6]
-            charge_cols = [7, 8, 9]
-
-            # Extract event one-hot predictions and decode via argmax along last axis
-            event_preds = generated_data[:, :, event_cols]  # shape (batch, seq_len, 2)
-            event_decoded = np.argmax(event_preds, axis=2)  # shape (batch, seq_len)
-
-            # Extract charge_mode one-hot predictions and decode via argmax
-            charge_preds = generated_data[:, :, charge_cols]  # shape (batch, seq_len, 3)
-            charge_decoded = np.argmax(charge_preds, axis=2)  # shape (batch, seq_len)
-
-            # Create a mask to keep all columns except the one-hot encoded ones
-            mask = np.ones(generated_data.shape[2], dtype=bool)
-            mask[event_cols + charge_cols] = False
-
-            # Extract the features without the one-hot encoded columns
-            data_wo_one_hot = generated_data[:, :, mask]  # shape (batch, seq_len, remaining_features)
-
-            # Now append the decoded categorical columns at the end
-            # decoded_cats shape should be (batch, seq_len, 2)
-            decoded_cats = np.stack((event_decoded, charge_decoded), axis=2)
-
-            # Concatenate along the last axis (features)
-            processed_data = np.concatenate((data_wo_one_hot, decoded_cats), axis=2)
-
-            return processed_data, event_decoded, charge_decoded
 
 class TimeDataset_irregular(torch.utils.data.Dataset):
     def __init__(self, seq_len, data_name, missing_rate=0.0, event=None, charge_mode=None, return_minmax=False):

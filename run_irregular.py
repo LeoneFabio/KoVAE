@@ -14,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models.kovae import KoVAE
 import torch.optim as optim
 import logging
-from utils.utils_data import create_timeDataset_irregular, inverse_MinMaxScaler, decode_categorical_from_generated
+from utils.utils_data import create_timeDataset_irregular, inverse_MinMaxScaler, discretize_categorical_features
 from viz.getter import Getter
 from viz.visualizer_tabular import TabularVisualizer
 
@@ -197,16 +197,6 @@ def main(args):
     if args.dataset == 'EV':
         # De-normalize the generated data
         generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
-        
-        ''' ##########################################################################
-        #POST-PROCESSING in order to handle categorical features' output appropriately
-        generated_data_denormalized, event_cat, charge_cat = decode_categorical_from_generated(generated_data_denormalized)
-        
-
-        print("Decoded event categories:", event_cat)
-        print("Decoded charge_mode categories:", charge_cat)
-        #############################################################################'''
-
 
     # save data in torch format in the directory ./Generated_data if not exist
     output_dir = './Generated_data'
@@ -224,11 +214,12 @@ def main(args):
         torch.save(torch.from_numpy(generated_data_denormalized), file_path_torch_tensor)
         #generated_data_denormalized is a numpy array (n, seq_len, num_features), now I have to create a df considering the header names saved in output_info_dir/EV_features.json
         df = pd.DataFrame(generated_data_denormalized.reshape(-1, generated_data_denormalized.shape[-1]), columns=features)
+        df = discretize_categorical_features(df)
         df.to_csv(file_path_csv, index=False)
 
     else:
         torch.save(torch.from_numpy(generated_data), file_path_torch_tensor)
-    logging.info(f"Generated data saved to {file_path_torch_tensor}")
+    logging.info(f"Generated data saved into {output_dir}")
     
     #Reconstruct data
     recon = getter.get_reconstructed_data(train_loader, time, final_index)
@@ -239,8 +230,9 @@ def main(args):
     file_path_csv = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.csv')
     torch.save(torch.from_numpy(recon), file_path_torch_tensor)
     df = pd.DataFrame(recon.reshape(-1, recon.shape[-1]), columns=features)
+    df = discretize_categorical_features(df)
     df.to_csv(file_path_csv, index=False)
-    logging.info(f"Reconstructed data saved to {file_path_torch_tensor}")
+    logging.info(f"Reconstructed data saved into {output_dir}")
     
     # Embedded original data -> data reference from reconstruction 
     original = getter.get_original_data(train_loader)
@@ -251,8 +243,9 @@ def main(args):
     file_path_csv = os.path.join(output_dir, f'{args.dataset}_original_data.csv')
     torch.save(torch.from_numpy(original), file_path_torch_tensor)
     df = pd.DataFrame(original.reshape(-1, original.shape[-1]), columns=features)
+    df = discretize_categorical_features(df)
     df.to_csv(file_path_csv, index=False)
-    logging.info(f"Original data saved to {file_path_torch_tensor}")
+    logging.info(f"Original data saved into {output_dir}")
     
     
 
