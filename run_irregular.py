@@ -255,7 +255,8 @@ def main(args):
     
     visualizer.reconstructions(original, recon)
     visualizer.plot_feature_distributions(original, recon, generated_data_denormalized, feature_names=features)
-    
+    visualizer.plot_global_distribution(original, recon, generated_data_denormalized)
+
     if args.dataset == 'EV':
         visualizer.samples(generated_data_denormalized)
     else:

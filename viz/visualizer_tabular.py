@@ -16,9 +16,42 @@ class TabularVisualizer:
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
+    def plot_global_distribution(self, real, recon, synthetic, filename="global_pdf.png"):
+        """
+        Plot a single global distribution (KDE) for real, reconstructed,
+        and synthetic data across all features and time steps.
+
+        Args:
+            real, recon, synthetic : np.ndarray
+                Shape (num_batch, seq_len, num_features)
+            filename : str
+            save_dir : str or None
+        """
+        # Flatten across batch, time, and features
+        real_flat = real.flatten()
+        recon_flat = recon.flatten()
+        synthetic_flat = synthetic.flatten()
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        sns.kdeplot(real_flat, ax=ax, label="Real", color="blue", fill=True, alpha=0.3)
+        sns.kdeplot(recon_flat, ax=ax, label="Reconstruction", color="orange", fill=True, alpha=0.3)
+        sns.kdeplot(synthetic_flat, ax=ax, label="Synthetic", color="green", fill=True, alpha=0.3)
+
+        ax.set_title("Global Distribution across all features")
+        ax.legend()
+
+        plt.tight_layout()
+        if self.save_plots:
+            path = os.path.join(self.output_dir, filename)
+            plt.savefig(path, dpi=150)
+            plt.close()
+        else:
+            plt.show()
+
+
 
     def plot_feature_distributions(self, real, recon, synthetic, feature_names=None,
-                                filename="pdfs.png", max_features=10):
+                                filename="per_feature_pdfs.png", max_features=10):
         """
         Plot PDFs (KDE) of real, reconstructed, and synthetic data for each feature.
         
