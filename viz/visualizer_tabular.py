@@ -101,7 +101,8 @@ class TabularVisualizer:
         Visualize original vs reconstructed tabular sequences.
         """
         n_plot = min(max_samples, x.shape[0])
-        fig, axs = plt.subplots(n_plot, x.shape[2], figsize=(x.shape[2] * 3, n_plot * 2))
+        fig, axs = plt.subplots(n_plot, x.shape[2], figsize=(x.shape[2] * 3, n_plot * 2), squeeze=False)
+
         for i in range(n_plot):
             for j in range(x.shape[2]):
                 axs[i, j].plot(x[i, :, j], label='Original', color='blue')
@@ -128,7 +129,7 @@ class TabularVisualizer:
         
         n_plot = min(n_samples, generated.shape[0])
         samples = generated[:n_plot]
-        fig, axs = plt.subplots(n_plot, samples.shape[2], figsize=(samples.shape[2] * 3, n_plot * 2))
+        fig, axs = plt.subplots(n_plot, samples.shape[2], figsize=(samples.shape[2] * 3, n_plot * 2),  squeeze=False)
 
         for i in range(n_plot):
             for j in range(samples.shape[2]):

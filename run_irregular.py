@@ -246,9 +246,8 @@ def main(args):
     df = discretize_categorical_features(df)
     df.to_csv(file_path_csv, index=False)
     logging.info(f"Original data saved into {output_dir}")
-    
-    
 
+    
     #PLOTS -> Visualization of reconstruction, generated data and latent traversals
     
     visualizer = TabularVisualizer(model)
@@ -299,7 +298,7 @@ def main(args):
     print('-'*40)'''
     
     # Visualization eval
-    visualization(original, recon, 'pca', args)
+    #visualization(original, recon, 'pca', args) --> it doesn't work if seq_len == num of processed rows, that is n_batches=1
     visualization(original, recon, 'tsne', args)
     
 
