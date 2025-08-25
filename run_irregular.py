@@ -97,7 +97,12 @@ def log_losses(epoch, losses_tr, names):
 
 parser = define_args()
 args = parser.parse_args()
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    stream=sys.stdout 
+)
 
 if args.charge_mode is not None and args.event not in [None, 'charge']:
     parser.error("--charge_mode is only allowed if --event is 'charge' or not set.")
