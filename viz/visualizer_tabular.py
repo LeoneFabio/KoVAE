@@ -38,6 +38,8 @@ class TabularVisualizer:
         sns.kdeplot(synthetic_flat, ax=ax, label="Synthetic", color="green", fill=True, alpha=0.3)
 
         ax.set_title("Global Distribution across all features")
+        ax.set_xlabel("Data Value")               # x-axis label
+        ax.set_ylabel("Data Density Estimate")    # y-axis label
         ax.legend()
 
         plt.tight_layout()
@@ -84,6 +86,8 @@ class TabularVisualizer:
             sns.kdeplot(synthetic_flat[:, j], ax=ax, label="Synthetic", color="green", fill=True, alpha=0.3)
 
             ax.set_title(fname)
+            ax.set_xlabel("Data Value")               # x-axis label
+            ax.set_ylabel("Data Density Estimate")    # y-axis label
             ax.legend()
 
         plt.tight_layout()
