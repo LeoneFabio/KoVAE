@@ -14,14 +14,14 @@ class Getter():
         with torch.no_grad():
             recon_data = []
             for data in train_loader:
-                recon_data.append(self.model(data['inter'], time, final_index)[0])
+                recon_data.append(self.model(data['inter'], time, final_index)[0].detach().cpu().numpy())
         recon_data = np.vstack(recon_data)
         return recon_data
     
     def get_original_data(self, train_loader):
         x = []
         for data in train_loader:
-            x.append(data['original_data'].to(get_device()).float())
+            x.append(data['original_data'].float().detach().cpu().numpy())
         x = np.vstack(x)
         return x
     
