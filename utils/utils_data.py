@@ -226,9 +226,12 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
 
     # Compute event duration in minutes
     df['duration_minutes'] = (df['end_time'] - df['timestamp']).dt.total_seconds() / 60
+    
+    # Compute km driven
+    df['km_driven'] = df['end_odo'] - df['odo']
 
     # Drop original time columns
-    df = df.drop(columns=['timestamp', 'end_time'])
+    df = df.drop(columns=['timestamp', 'end_time', 'odo', 'end_odo'])
     
     ######################### FILTERING SECTION #######################################
     # Apply filtering before encoding
