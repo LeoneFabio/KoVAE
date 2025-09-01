@@ -134,7 +134,7 @@ def main(args):
     g = torch.Generator()
     g.manual_seed(args.seed)
 
-    train_loader = Data.DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=True, num_workers=0,
+    train_loader = Data.DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=False, num_workers=0,
                                    worker_init_fn=seed_worker, generator=g)
 
     logging.info(args.dataset + ' dataset is ready.')
