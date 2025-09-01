@@ -422,6 +422,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 
                 # Save self.original_sample to CSV
                 original_reshaped = np.array(self.original_sample).reshape(-1, len(header))
+                original_reshaped = inverse_MinMaxScaler(original_reshaped, min_data, max_data)
                 original_df = pd.DataFrame(original_reshaped, columns=header)
                 original_df.to_csv(os.path.join(output_dir, f'{data_name}_original_sample.csv'), index=False)
 
