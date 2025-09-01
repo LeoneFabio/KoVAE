@@ -419,6 +419,17 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 self.samples = seq_data.copy()
                 '''for i in range(len(seq_data)):
                     self.samples.append(seq_data[idx[i]])'''
+                
+                # Save self.original_sample to CSV
+                original_reshaped = np.array(self.original_sample).reshape(-1, len(header))
+                original_df = pd.DataFrame(original_reshaped, columns=header)
+                original_df.to_csv(os.path.join(output_dir, f'{data_name}_original_sample.csv'), index=False)
+
+                # Save self.samples to CSV (includes time column)
+                samples_reshaped = np.array(self.samples).reshape(-1, len(header) + 1)  # +1 for time column
+                samples_columns = header + ['time']
+                samples_df = pd.DataFrame(samples_reshaped, columns=samples_columns)
+                samples_df.to_csv(os.path.join(output_dir, f'{data_name}_samples.csv'), index=False)
             else:
                 # NOT EV dataset
                 
