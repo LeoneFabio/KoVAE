@@ -11,7 +11,7 @@ import json
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.kovae import KoVAE, train_sequential_ev_vae
+from models.kovae import KoVAE
 import torch.optim as optim
 import logging
 from utils.utils_data import create_timeDataset_irregular, inverse_MinMaxScaler, discretize_categorical_features
@@ -139,18 +139,6 @@ def main(args):
 
     logging.info(args.dataset + ' dataset is ready.')
 
-    args.w_consistency = 1.0  # Weight for temporal constraints
-    trained_model, trainer = train_sequential_ev_vae(args, train_loader)
-
-    # Generate temporally consistent sequences
-    generated_sequences = trained_model.generate_sequence(n_samples=100)
-    if args.dataset == 'EV':
-        # De-normalize the generated data
-        generated_sequences = inverse_MinMaxScaler(generated_sequences, min_data, max_data)
-
-    print(f"Generated sequences:\n{generated_sequences}")
-
-"""
     disc_dim = None
     if args.dataset == 'EV':
         disc_dim = [2, 3]
@@ -316,7 +304,7 @@ def main(args):
     
     # Visualization eval
     #visualization(original, recon, 'pca', args) --> it doesn't work if seq_len == num of processed rows, that is n_batches=1
-    visualization(original, recon, 'tsne', args)"""
+    visualization(original, recon, 'tsne', args)
     
 
 
