@@ -438,7 +438,6 @@ class KoVAE(nn.Module):
                 one_hot_samples = one_hot_samples.cuda()
             return one_hot_samples
         
-
 class EVPhysicalConstraintLayer(nn.Module):
     """
     Post-processing layer to enforce EV physical constraints
