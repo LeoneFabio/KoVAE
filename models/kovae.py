@@ -439,7 +439,6 @@ class KoVAE(nn.Module):
             return one_hot_samples
         
 
-
 class EVPhysicalConstraintLayer(nn.Module):
     """
     Post-processing layer to enforce EV physical constraints
@@ -542,7 +541,8 @@ class EVPhysicalConstraintLayer(nn.Module):
         # For TRIPS: SOC decreases based on distance (consumption model)
         consumption_rate = 0.3  # 30% SOC per normalized distance unit
         trip_soc_decrease = trip_distance * consumption_rate
-        trip_end_soc = torch.clamp(start_soc - trip_soc_decrease, 0.05, 1.0)  # min 5% SOC
+        min_soc = torch.full_like(start_soc, 0.05)  # min 5% SOC tensor
+        trip_end_soc = torch.clamp(start_soc - trip_soc_decrease, min_soc, torch.ones_like(start_soc))
         
         # For CHARGING: SOC increases (limited by battery capacity and charging physics)
         charge_duration_norm = torch.clamp(x_constrained[:, self.duration_idx], 0, 1)
@@ -679,23 +679,3 @@ def modify_existing_decoder(original_decoder):
             return x_constrained
     
     return ConstrainedDecoder(original_decoder)
-
-
-# USAGE: Modify your existing model with minimal changes
-"""
-# In your existing KoVAE class, replace decoder initialization:
-
-# OLD:
-# self.decoder = VKDecoder(self.args, self.latent_dim)
-
-# NEW:
-original_decoder = VKDecoder(self.args, self.latent_dim)
-self.decoder = modify_existing_decoder(original_decoder)
-
-# Also replace loss computation in your loss method:
-# Add this to your loss function:
-physics_loss_fn = EVLossWithPhysics(physics_weight=self.args.physics_weight)
-total_loss, recon_loss, physics_loss = physics_loss_fn(x_rec, x)
-
-# Modify your total loss calculation to include physics_loss
-"""
