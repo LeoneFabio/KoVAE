@@ -1,4 +1,4 @@
-import torch
+"""import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import models.losses as losses
@@ -227,14 +227,14 @@ class KoVAE(nn.Module):
         return Ct, z_pred, err
 
     def loss(self, x, x_rec, z_dist, z_prior_dist, z_prior_sample):
-        """
+        '''
         :param x: Original input sequence
         :param x_rec: Reconstructed sequence
         :param z_dist: Posterior latent distributions (dict with 'cont' and/or 'disc')
         :param z_prior_dist: Prior latent distributions (same format)
         :param z_prior_sample: Prior-sampled full latent trajectory
         :return: tuple of (total loss, rec loss, KL loss, predictive loss)
-        """
+        '''
 
         a0 = self.args.w_rec
         a1 = self.args.w_kl
@@ -420,5 +420,347 @@ class KoVAE(nn.Module):
                 one_hot_samples = one_hot_samples.cuda()
             return one_hot_samples
         
+"""
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+from typing import Dict, Tuple, Optional
+
+
+class SequentialEVVAE(nn.Module):
+    """
+    VAE with explicit temporal consistency constraints for EV data
+    Ensures: monotonic odometer, consistent SOC transitions, logical event sequences
+    """
     
+    def __init__(self, args):
+        super(SequentialEVVAE, self).__init__()
+        self.args = args
+        self.seq_len = args.seq_len
+        self.inp_dim = args.inp_dim  # [odo, end_odo, soc, end_soc, event, charge_mode, duration]
+        self.hidden_dim = args.hidden_dim
+        self.z_dim = args.z_dim
+        
+        # Feature indices (based on your EV data structure)
+        self.odo_idx = 0
+        self.end_odo_idx = 1
+        self.soc_idx = 2
+        self.end_soc_idx = 3
+        self.event_idx = 4
+        self.charge_mode_idx = 5
+        self.duration_idx = 6
+        
+        # Encoder
+        self.encoder = nn.GRU(
+            input_size=self.inp_dim,
+            hidden_size=self.hidden_dim,
+            num_layers=2,
+            batch_first=True,
+            bidirectional=True
+        )
+        
+        # Latent space
+        self.fc_mu = nn.Linear(self.hidden_dim * 2, self.z_dim)
+        self.fc_logvar = nn.Linear(self.hidden_dim * 2, self.z_dim)
+        
+        # Decoder with temporal awareness
+        self.decoder_gru = nn.GRU(
+            input_size=self.z_dim + self.inp_dim,  # latent + previous state
+            hidden_size=self.hidden_dim,
+            num_layers=2,
+            batch_first=True
+        )
+        
+        # Output layers for each feature with constraints
+        self.odo_predictor = nn.Linear(self.hidden_dim, 1)
+        self.soc_predictor = nn.Linear(self.hidden_dim, 1)
+        self.event_predictor = nn.Linear(self.hidden_dim, 2)  # binary: trip/charge
+        self.charge_mode_predictor = nn.Linear(self.hidden_dim, 4)  # 0,1,2,3
+        self.duration_predictor = nn.Linear(self.hidden_dim, 1)
+        
+    def encode(self, x):
+        """Encode sequence to latent space"""
+        h, _ = self.encoder(x)
+        # Use final hidden state
+        h_final = h[:, -1, :]
+        
+        mu = self.fc_mu(h_final)
+        logvar = self.fc_logvar(h_final)
+        return mu, logvar
+    
+    def reparameterize(self, mu, logvar):
+        """Reparameterization trick"""
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def decode_with_constraints(self, z, initial_state=None):
+        """
+        Decode with temporal consistency constraints
+        """
+        batch_size = z.size(0)
+        device = z.device
+        
+        # Initialize sequence
+        if initial_state is None:
+            # Start with reasonable initial values
+            current_state = torch.zeros(batch_size, self.inp_dim, device=device)
+            current_state[:, self.odo_idx] = 0.5  # normalized initial odometer
+            current_state[:, self.soc_idx] = 0.8   # start with high SOC
+            current_state[:, self.end_soc_idx] = 0.8
+        else:
+            current_state = initial_state.clone()
+        
+        sequence = []
+        hidden = None
+        
+        # Expand z to sequence length
+        z_expanded = z.unsqueeze(1).expand(-1, self.seq_len, -1)
+        
+        for t in range(self.seq_len):
+            # Concatenate latent code with previous state
+            decoder_input = torch.cat([z_expanded[:, t:t+1], current_state.unsqueeze(1)], dim=-1)
+            
+            # GRU step
+            output, hidden = self.decoder_gru(decoder_input, hidden)
+            h_t = output.squeeze(1)
+            
+            # Predict next state with constraints
+            next_state = self.apply_constraints(h_t, current_state)
+            
+            sequence.append(next_state)
+            current_state = next_state
+        
+        return torch.stack(sequence, dim=1)
+    
+    def apply_constraints(self, h_t, prev_state):
+        """
+        Apply physical and logical constraints to predictions
+        """
+        batch_size = h_t.size(0)
+        device = h_t.device
+        next_state = torch.zeros(batch_size, self.inp_dim, device=device)
+        
+        # 1. Odometer constraint: monotonically increasing
+        prev_end_odo = prev_state[:, self.end_odo_idx]
+        odo_increment = torch.relu(self.odo_predictor(h_t).squeeze())  # positive increment
+        next_odo = prev_end_odo + odo_increment * 0.1  # scale increment
+        
+        # 2. Trip distance (end_odo - odo) should be reasonable (0-100km normalized)
+        trip_distance = torch.sigmoid(self.duration_predictor(h_t).squeeze()) * 0.2  # max 20% of range
+        next_end_odo = next_odo + trip_distance
+        
+        # 3. SOC constraints: starts where previous ended, decreases during trips
+        prev_end_soc = prev_state[:, self.end_soc_idx]
+        next_soc = prev_end_soc  # continuity
+        
+        # 4. Event prediction: trip (0) or charge (1)
+        event_logits = self.event_predictor(h_t)
+        event_probs = torch.softmax(event_logits, dim=1)
+        event = torch.multinomial(event_probs, 1).squeeze().float()
+        
+        # 5. SOC evolution based on event
+        if torch.any(event == 0):  # Trip
+            # SOC decreases during trips (proportional to distance)
+            trip_mask = (event == 0)
+            soc_decrease = trip_distance * 0.5  # consumption rate
+            next_end_soc = torch.where(trip_mask, 
+                                     torch.clamp(next_soc - soc_decrease, 0.1, 1.0),
+                                     next_soc)
+            charge_mode = torch.zeros_like(event)
+        else:  # Charge
+            # SOC increases during charging
+            charge_mask = (event == 1)
+            soc_increase = torch.sigmoid(self.soc_predictor(h_t).squeeze()) * 0.5
+            next_end_soc = torch.where(charge_mask,
+                                     torch.clamp(next_soc + soc_increase, 0.1, 1.0),
+                                     next_soc)
+            # Predict charge mode for charging events
+            charge_mode_logits = self.charge_mode_predictor(h_t)
+            charge_mode = torch.multinomial(torch.softmax(charge_mode_logits, dim=1), 1).squeeze().float()
+            charge_mode = torch.where(charge_mask, charge_mode, torch.zeros_like(charge_mode))
+        
+        # 6. Duration prediction (reasonable values)
+        duration_raw = self.duration_predictor(h_t).squeeze()
+        duration = torch.sigmoid(duration_raw) * 500  # 0-500 minutes normalized
+        
+        # Assemble next state
+        next_state[:, self.odo_idx] = next_odo
+        next_state[:, self.end_odo_idx] = next_end_odo
+        next_state[:, self.soc_idx] = next_soc
+        next_state[:, self.end_soc_idx] = next_end_soc
+        next_state[:, self.event_idx] = event
+        next_state[:, self.charge_mode_idx] = charge_mode
+        next_state[:, self.duration_idx] = duration / 500.0  # normalize
+        
+        return next_state
+    
+    def forward(self, x):
+        """Forward pass"""
+        # Encode
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        
+        # Decode with constraints
+        x_recon = self.decode_with_constraints(z, x[:, 0])  # start from first state
+        
+        return x_recon, mu, logvar
+    
+    def generate_sequence(self, n_samples=1, seq_len=None):
+        """Generate new sequences with proper temporal consistency"""
+        if seq_len is None:
+            seq_len = self.seq_len
+            
+        device = next(self.parameters()).device
+        
+        # Sample from prior
+        z = torch.randn(n_samples, self.z_dim, device=device)
+        
+        # Generate with constraints
+        generated = self.decode_with_constraints(z)
+        
+        return generated
+    
+    def loss_function(self, x_recon, x, mu, logvar):
+        """
+        Loss with temporal consistency penalties
+        """
+        batch_size = x.size(0)
+        
+        # 1. Reconstruction loss
+        recon_loss = F.mse_loss(x_recon, x, reduction='sum') / batch_size
+        
+        # 2. KL divergence
+        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / batch_size
+        
+        # 3. Temporal consistency losses
+        consistency_loss = 0.0
+        
+        # Odometer monotonicity
+        odo_diff = x_recon[:, 1:, self.odo_idx] - x_recon[:, :-1, self.end_odo_idx]
+        monotonic_penalty = torch.sum(torch.relu(-odo_diff))  # penalize decreases
+        consistency_loss += monotonic_penalty / batch_size
+        
+        # SOC continuity (end_soc[t] should equal soc[t+1])
+        soc_continuity = torch.sum((x_recon[:, 1:, self.soc_idx] - 
+                                   x_recon[:, :-1, self.end_soc_idx]).pow(2))
+        consistency_loss += soc_continuity / batch_size
+        
+        # Event logic: SOC should increase during charging, decrease during trips
+        event_mask = x_recon[:, :, self.event_idx] > 0.5  # charging
+        soc_change = x_recon[:, :, self.end_soc_idx] - x_recon[:, :, self.soc_idx]
+        
+        # Charging should increase SOC
+        charge_logic_loss = torch.sum(torch.relu(-soc_change[event_mask]))
+        # Trips should decrease SOC (or stay same for very short trips)
+        trip_logic_loss = torch.sum(torch.relu(soc_change[~event_mask] - 0.01))
+        
+        consistency_loss += (charge_logic_loss + trip_logic_loss) / batch_size
+        
+        # Total loss
+        total_loss = recon_loss + self.args.w_kl * kl_loss + self.args.w_consistency * consistency_loss
+        
+        return total_loss, recon_loss, kl_loss, consistency_loss
+
+
+class SequentialTrainer:
+    """Training loop with validation of temporal constraints"""
+    
+    def __init__(self, model, train_loader, args):
+        self.model = model
+        self.train_loader = train_loader
+        self.args = args
+        self.optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        
+    def train_epoch(self):
+        self.model.train()
+        total_loss = 0
+        
+        for batch_idx, data in enumerate(self.train_loader):
+            x = data['data'][:, :, :-1]  # remove time column
+            
+            self.optimizer.zero_grad()
+            x_recon, mu, logvar = self.model(x)
+            
+            loss, recon_loss, kl_loss, consistency_loss = self.model.loss_function(
+                x_recon, x, mu, logvar
+            )
+            
+            loss.backward()
+            self.optimizer.step()
+            
+            total_loss += loss.item()
+            
+            if batch_idx % 100 == 0:
+                print(f'Batch {batch_idx}: Loss={loss.item():.4f}, '
+                      f'Recon={recon_loss.item():.4f}, '
+                      f'KL={kl_loss.item():.4f}, '
+                      f'Consistency={consistency_loss.item():.4f}')
+        
+        return total_loss / len(self.train_loader)
+    
+    def validate_temporal_consistency(self, generated_data):
+        """Validate that generated data follows temporal rules"""
+        batch_size, seq_len, _ = generated_data.shape
+        violations = {}
+        
+        # Check odometer monotonicity
+        odo_violations = 0
+        for i in range(seq_len - 1):
+            end_odo_current = generated_data[:, i, 1]
+            odo_next = generated_data[:, i + 1, 0]
+            violations_batch = torch.sum(odo_next < end_odo_current).item()
+            odo_violations += violations_batch
+        
+        violations['odometer_monotonic'] = odo_violations / (batch_size * (seq_len - 1))
+        
+        # Check SOC continuity
+        soc_violations = 0
+        for i in range(seq_len - 1):
+            end_soc_current = generated_data[:, i, 3]
+            soc_next = generated_data[:, i + 1, 2]
+            violations_batch = torch.sum(torch.abs(soc_next - end_soc_current) > 0.05).item()
+            soc_violations += violations_batch
+        
+        violations['soc_continuity'] = soc_violations / (batch_size * (seq_len - 1))
+        
+        return violations
+    
+    def generate_and_validate(self, n_samples=10):
+        """Generate samples and validate temporal consistency"""
+        self.model.eval()
+        with torch.no_grad():
+            generated = self.model.generate_sequence(n_samples)
+            violations = self.validate_temporal_consistency(generated)
+            
+        return generated, violations
+
+
+# Usage example
+def train_sequential_ev_vae(args, train_loader):
+    """
+    Complete training pipeline for sequential EV VAE
+    """
+    # Add consistency weight to args if not present
+    if not hasattr(args, 'w_consistency'):
+        args.w_consistency = 1.0
+    
+    # Initialize model
+    model = SequentialEVVAE(args)
+    trainer = SequentialTrainer(model, train_loader, args)
+    
+    # Training loop
+    for epoch in range(args.epochs):
+        train_loss = trainer.train_epoch()
+        
+        # Generate and validate every 10 epochs
+        if epoch % 10 == 0:
+            generated, violations = trainer.generate_and_validate()
+            print(f'Epoch {epoch}: Train Loss={train_loss:.4f}')
+            print(f'Validation - Odometer violations: {violations["odometer_monotonic"]:.3f}')
+            print(f'Validation - SOC violations: {violations["soc_continuity"]:.3f}')
+    
+    return model, trainer
+
     
