@@ -76,19 +76,10 @@ class VKDecoder(nn.Module):
 
         self.linear = nn.Linear(self.args.hidden_dim * 2, self.args.inp_dim)
 
-        ########################################################
-        self.constraint_layer = EVPhysicalConstraintLayer()
-        ########################################################
-
     def forward(self, z):
         # decode
         h, _ = self.rnn(z)
         x_hat = nn.functional.sigmoid(self.linear(h))
-
-        ######################################################
-        x_hat = self.constraint_layer(x_hat)
-        ######################################################
-
         return x_hat
 
 
@@ -145,12 +136,8 @@ class KoVAE(nn.Module):
 
 
         # Define decoder    
-        #################################################################self.decoder = VKDecoder(self.args, self.latent_dim)
+        self.decoder = VKDecoder(self.args, self.latent_dim)
 
-        original_decoder = VKDecoder(self.args, self.latent_dim)
-        self.decoder = modify_existing_decoder(original_decoder)
-
-        #################################################################
 
     
         # Prior network: GRUCell outputs both cont and disc prior parameters
@@ -178,7 +165,7 @@ class KoVAE(nn.Module):
                 z_alphas.append(nn.Linear(self.hidden_dim * 2, disc_dim))
             self.z_alphas = nn.ModuleList(z_alphas)
 
-        self.names = ['total', 'rec', 'physical', 'kl', 'pred_prior']
+        self.names = ['total', 'rec', 'kl', 'pred_prior']
 
     
     def forward(self, x, time=None, final_index=None):
@@ -257,17 +244,10 @@ class KoVAE(nn.Module):
 
 
         # --- 1. Reconstruction Loss ---
-        '''if a0 > 0:
+        if a0 > 0:
             recon_loss = F.mse_loss(x_rec, x, reduction='sum') / batch_size
             loss += a0 * recon_loss
-            agg_losses.append(recon_loss)'''
-        physics_weight = getattr(self.args, 'physics_weight', 1.0)
-        physics_loss_fn = EVLossWithPhysics(physics_weight=physics_weight)
-        
-        if a0 > 0:
-            total_recon_loss, recon_loss, physics_loss = physics_loss_fn(x_rec, x)
-            loss += a0 * total_recon_loss
-            agg_losses.extend([recon_loss, physics_loss])  # for monitoring
+            agg_losses.append(recon_loss)
         else:
             recon_loss = torch.tensor(0.0, device=x.device)
 
@@ -437,214 +417,3 @@ class KoVAE(nn.Module):
             if torch.cuda.is_available():
                 one_hot_samples = one_hot_samples.cuda()
             return one_hot_samples
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-class EVPhysicalConstraintLayer(nn.Module):
-    """
-    Enforces EV physical constraints on decoder output.
-    Gradient-safe (no in-place ops).
-    """
-    def __init__(self, feature_indices=None):
-        super().__init__()
-        if feature_indices is None:
-            self.odo_idx = 0
-            self.end_odo_idx = 1 
-            self.soc_idx = 2
-            self.end_soc_idx = 3
-            self.event_idx = 4
-            self.charge_mode_idx = 5
-            self.duration_idx = 6
-        else:
-            self.__dict__.update(feature_indices)
-
-    def forward(self, x_raw):
-        """
-        x_raw: [batch, seq_len, features]
-        """
-        batch, seq_len, feat_dim = x_raw.shape
-        outputs = []
-        prev_end_odo = None
-        prev_end_soc = None
-
-        for t in range(seq_len):
-            x_t = x_raw[:, t, :]
-
-            # Clamp ranges first
-            odo = torch.relu(x_t[:, self.odo_idx])
-            end_odo = torch.relu(x_t[:, self.end_odo_idx])
-            soc = torch.clamp(x_t[:, self.soc_idx], 0.0, 1.0)
-            end_soc = torch.clamp(x_t[:, self.end_soc_idx], 0.0, 1.0)
-            event = torch.round(torch.sigmoid(x_t[:, self.event_idx]))
-            charge_mode = torch.clamp(torch.round(x_t[:, self.charge_mode_idx]), 0, 3)
-            duration = torch.relu(x_t[:, self.duration_idx])
-
-            # Enforce temporal consistency
-            if t > 0:
-                # Odometer: must not go backwards
-                odo = torch.max(odo, prev_end_odo)
-                end_odo = torch.max(end_odo, odo)
-
-                # SOC continuity: smooth transition
-                soc = prev_end_soc
-
-                # Trip vs charge logic
-                trip_mask = (event < 0.5)
-                charge_mask = (event >= 0.5)
-
-                trip_distance = end_odo - odo
-                trip_end_soc = torch.clamp(soc - 0.3 * trip_distance, 0.05, 1.0)
-
-                charge_increase = torch.clamp(duration / 60.0, 0.0, 0.8)
-                charge_end_soc = torch.clamp(soc + charge_increase, 0.0, 1.0)
-
-                end_soc = torch.where(trip_mask, trip_end_soc, charge_end_soc)
-
-                # Charge mode: only valid if charging
-                charge_mode = torch.where(charge_mask, charge_mode, torch.zeros_like(charge_mode))
-
-                # Duration logic: scale reasonably
-                trip_duration = torch.clamp(trip_distance * 2.0, 1.0, 600.0)
-                charge_duration = torch.clamp((end_soc - soc) * 600.0, 1.0, 600.0)
-                duration = torch.where(trip_mask, trip_duration, charge_duration)
-
-            # Rebuild vector
-            x_constrained = torch.cat([
-                odo.unsqueeze(1),
-                end_odo.unsqueeze(1),
-                soc.unsqueeze(1),
-                end_soc.unsqueeze(1),
-                event.unsqueeze(1),
-                charge_mode.unsqueeze(1),
-                duration.unsqueeze(1),
-                x_t[:, 7:]  # keep extras
-            ], dim=1)
-
-            outputs.append(x_constrained)
-
-            prev_end_odo = end_odo.detach()
-            prev_end_soc = end_soc.detach()
-
-        return torch.stack(outputs, dim=1)
-
-
-class EVLossWithPhysics(nn.Module):
-    """
-    Extended loss function that penalizes physical violations
-    """
-    def __init__(self, feature_indices=None, physics_weight=1.0):
-        super(EVLossWithPhysics, self).__init__()
-        self.physics_weight = physics_weight
-        
-        if feature_indices is None:
-            self.odo_idx = 0
-            self.end_odo_idx = 1 
-            self.soc_idx = 2
-            self.end_soc_idx = 3
-            self.event_idx = 4
-        else:
-            self.__dict__.update(feature_indices)
-    
-    def forward(self, x_recon, x_target):
-        """
-        Compute loss with physical constraint penalties
-        Handle both 2D [batch, features] and 3D [batch, seq_len, features] tensors
-        """
-        batch_size = x_recon.size(0)
-        
-        # Standard reconstruction loss
-        recon_loss = F.mse_loss(x_recon, x_target, reduction='mean')
-        
-        # Check tensor dimensions
-        if x_recon.dim() < 3:
-            # If tensor is 2D [batch, features], no temporal constraints possible
-            physics_loss = torch.tensor(0.0, device=x_recon.device)
-            total_loss = recon_loss + self.physics_weight * physics_loss
-            return total_loss, recon_loss, physics_loss
-        
-        # For 3D tensors [batch, seq_len, features], apply temporal constraints
-        seq_len = x_recon.size(1)
-        if seq_len < 2:
-            # Need at least 2 timesteps for temporal constraints
-            physics_loss = torch.tensor(0.0, device=x_recon.device)
-            total_loss = recon_loss + self.physics_weight * physics_loss
-            return total_loss, recon_loss, physics_loss
-        
-        # Physical constraint violation penalties
-        physics_loss = 0.0
-        
-        # 1. Odometer monotonicity penalty
-        odo_violations = 0.0
-        for t in range(1, seq_len):
-            # end_odo[t-1] should <= odo[t]
-            prev_end_odo = x_recon[:, t-1, self.end_odo_idx]
-            curr_odo = x_recon[:, t, self.odo_idx]
-            violations = torch.relu(prev_end_odo - curr_odo)  # penalize backward travel
-            odo_violations += torch.mean(violations)
-            
-            # odo[t] should <= end_odo[t] 
-            curr_end_odo = x_recon[:, t, self.end_odo_idx]
-            violations = torch.relu(curr_odo - curr_end_odo)  # penalize negative trips
-            odo_violations += torch.mean(violations)
-        
-        physics_loss += odo_violations
-        
-        # 2. SOC continuity penalty
-        soc_continuity_loss = 0.0
-        for t in range(1, seq_len):
-            prev_end_soc = x_recon[:, t-1, self.end_soc_idx]
-            curr_soc = x_recon[:, t, self.soc_idx]
-            # Should be approximately equal (allow small measurement noise)
-            continuity_error = torch.abs(prev_end_soc - curr_soc)
-            soc_continuity_loss += torch.mean(continuity_error)
-        
-        physics_loss += soc_continuity_loss
-        
-        # 3. Event logic penalty
-        event_logic_loss = 0.0
-        for t in range(seq_len):
-            event = x_recon[:, t, self.event_idx]
-            soc_change = x_recon[:, t, self.end_soc_idx] - x_recon[:, t, self.soc_idx]
-            
-            # During trips (event≈0), SOC should decrease or stay same
-            trip_mask = event < 0.5
-            if torch.any(trip_mask):
-                trip_violations = torch.relu(soc_change[trip_mask])  # penalize SOC increase during trips
-                event_logic_loss += torch.mean(trip_violations)
-            
-            # During charging (event≈1), SOC should increase
-            charge_mask = event >= 0.5  
-            if torch.any(charge_mask):
-                charge_violations = torch.relu(-soc_change[charge_mask])  # penalize SOC decrease during charging
-                event_logic_loss += torch.mean(charge_violations)
-        
-        physics_loss += event_logic_loss
-        
-        # Total loss
-        total_loss = recon_loss + self.physics_weight * physics_loss
-        
-        return total_loss, recon_loss, physics_loss
-
-
-# MINIMAL MODIFICATIONS TO YOUR EXISTING DECODER
-def modify_existing_decoder(original_decoder):
-    """
-    Minimal modification to add constraint layer to existing decoder
-    """
-    class ConstrainedDecoder(nn.Module):
-        def __init__(self, original_decoder):
-            super(ConstrainedDecoder, self).__init__()
-            self.original_decoder = original_decoder
-            self.constraint_layer = EVPhysicalConstraintLayer()
-            
-        def forward(self, z):
-            # Get raw output from original decoder
-            x_raw = self.original_decoder(z)
-            
-            # Apply physical constraints
-            x_constrained = self.constraint_layer(x_raw)
-            
-            return x_constrained
-    
-    return ConstrainedDecoder(original_decoder)
