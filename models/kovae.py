@@ -178,7 +178,7 @@ class KoVAE(nn.Module):
                 z_alphas.append(nn.Linear(self.hidden_dim * 2, disc_dim))
             self.z_alphas = nn.ModuleList(z_alphas)
 
-        self.names = ['total', 'rec', 'kl', 'pred_prior']
+        self.names = ['total', 'rec', 'physical', 'kl', 'pred_prior']
 
     
     def forward(self, x, time=None, final_index=None):
