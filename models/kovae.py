@@ -437,10 +437,11 @@ class KoVAE(nn.Module):
             if torch.cuda.is_available():
                 one_hot_samples = one_hot_samples.cuda()
             return one_hot_samples
+
 class EVPhysicalConstraintLayer(nn.Module):
     """
     Post-processing layer to enforce EV physical constraints
-    Compatible with older PyTorch versions - avoids problematic clamp operations
+    Gradient-safe version (no in-place modifications)
     """
     def __init__(self, feature_indices=None):
         super(EVPhysicalConstraintLayer, self).__init__()
@@ -463,121 +464,99 @@ class EVPhysicalConstraintLayer(nn.Module):
         x_raw: [batch, seq_len, features] - raw decoder output
         Returns: [batch, seq_len, features] - physically constrained output
         """
-        batch_size, seq_len, _ = x_raw.shape
-        x_constrained = x_raw.clone()
-        
-        # Process each timestep sequentially to maintain temporal consistency
+        batch_size, seq_len, feat_dim = x_raw.shape
+        outputs = []
+
         for t in range(seq_len):
             if t == 0:
-                # First timestep: apply basic range constraints only
-                x_constrained[:, t] = self._apply_range_constraints(x_constrained[:, t])
+                x_t = self._apply_range_constraints(x_raw[:, t])
             else:
-                # Subsequent timesteps: apply temporal consistency constraints
-                x_constrained[:, t] = self._apply_temporal_constraints(
-                    x_constrained[:, t], 
-                    x_constrained[:, t-1]
-                )
-        
-        return x_constrained
+                x_t = self._apply_temporal_constraints(x_raw[:, t], outputs[-1])
+            outputs.append(x_t)
+
+        return torch.stack(outputs, dim=1)
     
     def _apply_range_constraints(self, x_t):
-        """Apply basic range constraints for single timestep"""
-        x_constrained = x_t.clone()
-        
-        # SOC constraints: 0-100% (assuming normalized to 0-1)
-        x_constrained[:, self.soc_idx] = torch.clamp(x_constrained[:, self.soc_idx], 0.0, 1.0)
-        x_constrained[:, self.end_soc_idx] = torch.clamp(x_constrained[:, self.end_soc_idx], 0.0, 1.0)
-        
-        # Event: binary (trip=0, charge=1) 
-        x_constrained[:, self.event_idx] = torch.round(torch.sigmoid(x_constrained[:, self.event_idx]))
-        
-        # Charge mode: 0,1,2,3 (only meaningful when event=1)
-        charge_mode_raw = x_constrained[:, self.charge_mode_idx]
-        x_constrained[:, self.charge_mode_idx] = torch.clamp(torch.round(charge_mode_raw), 0.0, 3.0)
-        
-        # Duration: positive values
-        x_constrained[:, self.duration_idx] = torch.relu(x_constrained[:, self.duration_idx])
-        
-        return x_constrained
+        """Apply basic range constraints for single timestep (gradient-safe)"""
+        soc = torch.clamp(x_t[:, self.soc_idx], 0.0, 1.0)
+        end_soc = torch.clamp(x_t[:, self.end_soc_idx], 0.0, 1.0)
+        event = torch.round(torch.sigmoid(x_t[:, self.event_idx]))
+        charge_mode = torch.clamp(torch.round(x_t[:, self.charge_mode_idx]), 0.0, 3.0)
+        duration = torch.relu(x_t[:, self.duration_idx])
+
+        # Rebuild the feature vector
+        updated = x_t.clone()
+        updated = torch.cat([
+            updated[:, :self.soc_idx],
+            soc.unsqueeze(1),
+            updated[:, self.soc_idx+1:self.end_soc_idx],
+            end_soc.unsqueeze(1),
+            updated[:, self.end_soc_idx+1:self.event_idx],
+            event.unsqueeze(1),
+            updated[:, self.event_idx+1:self.charge_mode_idx],
+            charge_mode.unsqueeze(1),
+            updated[:, self.charge_mode_idx+1:self.duration_idx],
+            duration.unsqueeze(1),
+            updated[:, self.duration_idx+1:]
+        ], dim=1)
+
+        return updated
     
     def _apply_temporal_constraints(self, x_t, x_prev):
-        """Apply temporal consistency constraints between timesteps - compatible with older PyTorch"""
-        x_constrained = x_t.clone()
-        
-        # 1. ODOMETER MONOTONICITY
-        prev_end_odo = x_prev[:, self.end_odo_idx]
-        
-        # Ensure odo[t] >= end_odo[t-1] (continuity)
-        raw_odo = x_constrained[:, self.odo_idx]
-        x_constrained[:, self.odo_idx] = torch.max(raw_odo, prev_end_odo)
-        
-        # Ensure end_odo[t] >= odo[t] (no backward travel)
-        raw_end_odo = x_constrained[:, self.end_odo_idx]
-        x_constrained[:, self.end_odo_idx] = torch.max(raw_end_odo, x_constrained[:, self.odo_idx])
-        
-        # 2. SOC CONTINUITY AND PHYSICS
-        prev_end_soc = x_prev[:, self.end_soc_idx]
-        
-        # SOC[t] should start where previous ended (small tolerance for measurement error)
-        measurement_noise = torch.randn_like(prev_end_soc) * 0.01  # 1% noise
-        x_constrained[:, self.soc_idx] = torch.clamp(prev_end_soc + measurement_noise, 0.0, 1.0)
-        
-        # 3. EVENT-BASED SOC LOGIC
-        event = torch.round(torch.sigmoid(x_constrained[:, self.event_idx]))
-        x_constrained[:, self.event_idx] = event
-        
-        trip_mask = (event < 0.5)  # Trip event
-        charge_mask = (event >= 0.5)  # Charge event
-        
-        # Calculate trip distance (normalized)
-        trip_distance = x_constrained[:, self.end_odo_idx] - x_constrained[:, self.odo_idx]
-        
-        # SOC change logic
-        start_soc = x_constrained[:, self.soc_idx]
-        
-        # For TRIPS: SOC decreases based on distance (consumption model)
-        consumption_rate = 0.3  # 30% SOC per normalized distance unit
-        trip_soc_decrease = trip_distance * consumption_rate
-        # Use simple operations instead of problematic clamp with tensor bounds
-        trip_end_soc = start_soc - trip_soc_decrease
-        trip_end_soc = torch.max(trip_end_soc, torch.full_like(start_soc, 0.05))  # min 5% SOC
-        trip_end_soc = torch.min(trip_end_soc, torch.ones_like(start_soc))  # max 100% SOC
-        
-        # For CHARGING: SOC increases - avoid problematic clamp operations
-        charge_duration_norm = torch.clamp(x_constrained[:, self.duration_idx], 0.0, 1.0)
-        max_charge_rate = 0.8  # max 80% SOC increase per normalized time unit
-        charge_increase = charge_duration_norm * max_charge_rate
-        
-        # Simple approach using min/max operations (compatible with older PyTorch)
-        charge_end_soc = start_soc + charge_increase
-        charge_end_soc = torch.min(charge_end_soc, torch.ones_like(charge_end_soc))  # cap at 100%
-        charge_end_soc = torch.max(charge_end_soc, start_soc)  # ensure no decrease during charging
-        
-        # Apply event-specific SOC logic
-        final_end_soc = torch.where(trip_mask, trip_end_soc, charge_end_soc)
-        x_constrained[:, self.end_soc_idx] = final_end_soc
-        
-        # 4. CHARGE MODE LOGIC
-        # Charge mode only meaningful during charging events
-        charge_mode_raw = x_constrained[:, self.charge_mode_idx]
-        charge_mode = torch.clamp(torch.round(charge_mode_raw), 0.0, 3.0)
-        x_constrained[:, self.charge_mode_idx] = torch.where(charge_mask, charge_mode, torch.zeros_like(charge_mode))
-        
-        # 5. DURATION CONSISTENCY
-        # Duration should be reasonable for the distance/SOC change
-        raw_duration = torch.relu(x_constrained[:, self.duration_idx])
-        
-        # For trips: duration proportional to distance
-        trip_duration = trip_distance * 100.0  # scale factor for normalized time
-        
-        # For charging: duration proportional to SOC increase (avoid problematic tensor operations)
-        soc_increase = final_end_soc - start_soc
-        charge_duration = soc_increase * 200.0 + 5.0  # proportional + minimum 5 time units
-        
-        consistent_duration = torch.where(trip_mask, trip_duration, charge_duration)
-        x_constrained[:, self.duration_idx] = consistent_duration
-        
-        return x_constrained
+        """Apply temporal consistency constraints between timesteps (gradient-safe)"""
+        # ODOMETER
+        odo = torch.max(x_t[:, self.odo_idx], x_prev[:, self.end_odo_idx])
+        end_odo = torch.max(x_t[:, self.end_odo_idx], odo)
+
+        # SOC continuity
+        measurement_noise = torch.randn_like(x_prev[:, self.end_soc_idx]) * 0.01
+        soc = torch.clamp(x_prev[:, self.end_soc_idx] + measurement_noise, 0.0, 1.0)
+
+        # Event
+        event = torch.round(torch.sigmoid(x_t[:, self.event_idx]))
+        trip_mask = (event < 0.5)
+        charge_mask = (event >= 0.5)
+
+        # Trip logic
+        trip_distance = end_odo - odo
+        start_soc = soc
+        trip_end_soc = start_soc - trip_distance * 0.3
+        trip_end_soc = torch.max(trip_end_soc, torch.full_like(start_soc, 0.05))
+        trip_end_soc = torch.min(trip_end_soc, torch.ones_like(start_soc))
+
+        # Charge logic
+        charge_duration_norm = torch.clamp(x_t[:, self.duration_idx], 0.0, 1.0)
+        charge_increase = charge_duration_norm * 0.8
+        charge_end_soc = torch.min(start_soc + charge_increase, torch.ones_like(start_soc))
+        charge_end_soc = torch.max(charge_end_soc, start_soc)
+
+        end_soc = torch.where(trip_mask, trip_end_soc, charge_end_soc)
+
+        # Charge mode
+        charge_mode_raw = torch.clamp(torch.round(x_t[:, self.charge_mode_idx]), 0.0, 3.0)
+        charge_mode = torch.where(charge_mask, charge_mode_raw, torch.zeros_like(charge_mode_raw))
+
+        # Duration consistency
+        trip_duration = trip_distance * 100.0
+        soc_increase = end_soc - start_soc
+        charge_duration = soc_increase * 200.0 + 5.0
+        duration = torch.where(trip_mask, trip_duration, charge_duration)
+
+        # Rebuild the feature vector
+        updated = x_t.clone()
+        updated = torch.cat([
+            odo.unsqueeze(1),
+            end_odo.unsqueeze(1),
+            soc.unsqueeze(1),
+            end_soc.unsqueeze(1),
+            event.unsqueeze(1),
+            charge_mode.unsqueeze(1),
+            duration.unsqueeze(1),
+            updated[:, 7:]  # keep any extra features untouched
+        ], dim=1)
+
+        return updated
+
 
 
 class EVLossWithPhysics(nn.Module):
