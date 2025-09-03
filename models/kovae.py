@@ -437,7 +437,6 @@ class KoVAE(nn.Module):
             if torch.cuda.is_available():
                 one_hot_samples = one_hot_samples.cuda()
             return one_hot_samples
-        
 class EVPhysicalConstraintLayer(nn.Module):
     """
     Post-processing layer to enforce EV physical constraints
@@ -601,18 +600,34 @@ class EVLossWithPhysics(nn.Module):
     def forward(self, x_recon, x_target):
         """
         Compute loss with physical constraint penalties
+        Handle both 2D [batch, features] and 3D [batch, seq_len, features] tensors
         """
         batch_size = x_recon.size(0)
         
         # Standard reconstruction loss
         recon_loss = F.mse_loss(x_recon, x_target, reduction='mean')
         
+        # Check tensor dimensions
+        if x_recon.dim() < 3:
+            # If tensor is 2D [batch, features], no temporal constraints possible
+            physics_loss = torch.tensor(0.0, device=x_recon.device)
+            total_loss = recon_loss + self.physics_weight * physics_loss
+            return total_loss, recon_loss, physics_loss
+        
+        # For 3D tensors [batch, seq_len, features], apply temporal constraints
+        seq_len = x_recon.size(1)
+        if seq_len < 2:
+            # Need at least 2 timesteps for temporal constraints
+            physics_loss = torch.tensor(0.0, device=x_recon.device)
+            total_loss = recon_loss + self.physics_weight * physics_loss
+            return total_loss, recon_loss, physics_loss
+        
         # Physical constraint violation penalties
         physics_loss = 0.0
         
         # 1. Odometer monotonicity penalty
         odo_violations = 0.0
-        for t in range(1, x_recon.size(1)):
+        for t in range(1, seq_len):
             # end_odo[t-1] should <= odo[t]
             prev_end_odo = x_recon[:, t-1, self.end_odo_idx]
             curr_odo = x_recon[:, t, self.odo_idx]
@@ -628,7 +643,7 @@ class EVLossWithPhysics(nn.Module):
         
         # 2. SOC continuity penalty
         soc_continuity_loss = 0.0
-        for t in range(1, x_recon.size(1)):
+        for t in range(1, seq_len):
             prev_end_soc = x_recon[:, t-1, self.end_soc_idx]
             curr_soc = x_recon[:, t, self.soc_idx]
             # Should be approximately equal (allow small measurement noise)
@@ -639,7 +654,7 @@ class EVLossWithPhysics(nn.Module):
         
         # 3. Event logic penalty
         event_logic_loss = 0.0
-        for t in range(x_recon.size(1)):
+        for t in range(seq_len):
             event = x_recon[:, t, self.event_idx]
             soc_change = x_recon[:, t, self.end_soc_idx] - x_recon[:, t, self.soc_idx]
             
