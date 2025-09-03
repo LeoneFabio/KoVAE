@@ -441,7 +441,7 @@ class KoVAE(nn.Module):
 class EVPhysicalConstraintLayer(nn.Module):
     """
     Post-processing layer to enforce EV physical constraints
-    Can be added to existing decoder output without changing architecture
+    Compatible with older PyTorch versions - avoids problematic clamp operations
     """
     def __init__(self, feature_indices=None):
         super(EVPhysicalConstraintLayer, self).__init__()
@@ -494,7 +494,7 @@ class EVPhysicalConstraintLayer(nn.Module):
         
         # Charge mode: 0,1,2,3 (only meaningful when event=1)
         charge_mode_raw = x_constrained[:, self.charge_mode_idx]
-        x_constrained[:, self.charge_mode_idx] = torch.clamp(torch.round(charge_mode_raw), 0, 3)
+        x_constrained[:, self.charge_mode_idx] = torch.clamp(torch.round(charge_mode_raw), 0.0, 3.0)
         
         # Duration: positive values
         x_constrained[:, self.duration_idx] = torch.relu(x_constrained[:, self.duration_idx])
@@ -502,7 +502,7 @@ class EVPhysicalConstraintLayer(nn.Module):
         return x_constrained
     
     def _apply_temporal_constraints(self, x_t, x_prev):
-        """Apply temporal consistency constraints between timesteps"""
+        """Apply temporal consistency constraints between timesteps - compatible with older PyTorch"""
         x_constrained = x_t.clone()
         
         # 1. ODOMETER MONOTONICITY
@@ -535,19 +535,24 @@ class EVPhysicalConstraintLayer(nn.Module):
         
         # SOC change logic
         start_soc = x_constrained[:, self.soc_idx]
-        raw_end_soc = x_constrained[:, self.end_soc_idx]
         
         # For TRIPS: SOC decreases based on distance (consumption model)
         consumption_rate = 0.3  # 30% SOC per normalized distance unit
         trip_soc_decrease = trip_distance * consumption_rate
-        min_soc = torch.full_like(start_soc, 0.05)  # min 5% SOC tensor
-        trip_end_soc = torch.clamp(start_soc - trip_soc_decrease, min_soc, torch.ones_like(start_soc))
+        # Use simple operations instead of problematic clamp with tensor bounds
+        trip_end_soc = start_soc - trip_soc_decrease
+        trip_end_soc = torch.max(trip_end_soc, torch.full_like(start_soc, 0.05))  # min 5% SOC
+        trip_end_soc = torch.min(trip_end_soc, torch.ones_like(start_soc))  # max 100% SOC
         
-        # For CHARGING: SOC increases (limited by battery capacity and charging physics)
-        charge_duration_norm = torch.clamp(x_constrained[:, self.duration_idx], 0, 1)
+        # For CHARGING: SOC increases - avoid problematic clamp operations
+        charge_duration_norm = torch.clamp(x_constrained[:, self.duration_idx], 0.0, 1.0)
         max_charge_rate = 0.8  # max 80% SOC increase per normalized time unit
         charge_increase = charge_duration_norm * max_charge_rate
-        charge_end_soc = torch.clamp(start_soc + charge_increase, start_soc, 1.0)
+        
+        # Simple approach using min/max operations (compatible with older PyTorch)
+        charge_end_soc = start_soc + charge_increase
+        charge_end_soc = torch.min(charge_end_soc, torch.ones_like(charge_end_soc))  # cap at 100%
+        charge_end_soc = torch.max(charge_end_soc, start_soc)  # ensure no decrease during charging
         
         # Apply event-specific SOC logic
         final_end_soc = torch.where(trip_mask, trip_end_soc, charge_end_soc)
@@ -555,7 +560,8 @@ class EVPhysicalConstraintLayer(nn.Module):
         
         # 4. CHARGE MODE LOGIC
         # Charge mode only meaningful during charging events
-        charge_mode = torch.clamp(torch.round(x_constrained[:, self.charge_mode_idx]), 0, 3)
+        charge_mode_raw = x_constrained[:, self.charge_mode_idx]
+        charge_mode = torch.clamp(torch.round(charge_mode_raw), 0.0, 3.0)
         x_constrained[:, self.charge_mode_idx] = torch.where(charge_mask, charge_mode, torch.zeros_like(charge_mode))
         
         # 5. DURATION CONSISTENCY
@@ -563,11 +569,11 @@ class EVPhysicalConstraintLayer(nn.Module):
         raw_duration = torch.relu(x_constrained[:, self.duration_idx])
         
         # For trips: duration proportional to distance
-        trip_duration = trip_distance * 100  # scale factor for normalized time
+        trip_duration = trip_distance * 100.0  # scale factor for normalized time
         
-        # For charging: duration proportional to SOC increase  
+        # For charging: duration proportional to SOC increase (avoid problematic tensor operations)
         soc_increase = final_end_soc - start_soc
-        charge_duration = torch.where(soc_increase > 0, soc_increase * 200, torch.tensor(5.0))  # min 5 time units
+        charge_duration = soc_increase * 200.0 + 5.0  # proportional + minimum 5 time units
         
         consistent_duration = torch.where(trip_mask, trip_duration, charge_duration)
         x_constrained[:, self.duration_idx] = consistent_duration
@@ -639,14 +645,14 @@ class EVLossWithPhysics(nn.Module):
             
             # During trips (event≈0), SOC should decrease or stay same
             trip_mask = event < 0.5
-            trip_violations = torch.relu(soc_change[trip_mask])  # penalize SOC increase during trips
             if torch.any(trip_mask):
+                trip_violations = torch.relu(soc_change[trip_mask])  # penalize SOC increase during trips
                 event_logic_loss += torch.mean(trip_violations)
             
             # During charging (event≈1), SOC should increase
             charge_mask = event >= 0.5  
-            charge_violations = torch.relu(-soc_change[charge_mask])  # penalize SOC decrease during charging
             if torch.any(charge_mask):
+                charge_violations = torch.relu(-soc_change[charge_mask])  # penalize SOC decrease during charging
                 event_logic_loss += torch.mean(charge_violations)
         
         physics_loss += event_logic_loss
