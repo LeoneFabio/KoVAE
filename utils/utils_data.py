@@ -227,12 +227,36 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Compute event duration in minutes
     df['duration_minutes'] = (df['end_time'] - df['timestamp']).dt.total_seconds() / 60
     
-    '''# Compute km driven
-    df['km_driven'] = df['end_odo'] - df['odo']'''
+    # Compute km driven
+    df['km_driven'] = df['end_odo'] - df['odo']
+    
+    '''# Compute speed
+    # Add avg_speed in km/h 
+    df['avg_speed'] = np.where(
+        df['duration_minutes'] > 0,
+        (df['end_odo'] - df['odo']) / (df['duration_minutes'] / 60),
+        0
+    )
+    df['charge'] =  df['end_soc'] - df['soc']
+    
+    # discharge_per_km: only in trips
+    df['discharge_per_km'] = np.where(
+        (df['event'] == 'trip') & (df['km_driven'] != 0),
+        -df['charge'] / df['km_driven'],
+        0
+    )
+    
+    # charge_per_min: only in charge events
+    df['charge_per_min'] = np.where(
+        (df['event'] == 'charge') & (df['duration_minutes'] != 0),
+        df['charge'] / df['duration_minutes'],
+        0
+    )'''
 
     # Drop original time columns
     df = df.drop(columns=['timestamp', 'end_time'])
-    #df = df.drop(columns=['odo', 'end_odo'])  # Drop odometer readings if not needed
+    df = df.drop(columns=['odo', 'end_odo'])  # Drop odometer readings if not needed
+    #df = df.drop(columns=['soc', 'end_soc'])
     
     ######################### FILTERING SECTION #######################################
     # Apply filtering before encoding

@@ -224,7 +224,7 @@ class KoVAE(nn.Module):
 
         return Ct, z_pred, err
 
-    def loss(self, x, x_rec, z_dist, z_prior_dist, z_prior_sample):
+    def loss(self, x, x_rec, z_dist, z_prior_dist, z_prior_sample, w_kl=None):
         '''
         :param x: Original input sequence
         :param x_rec: Reconstructed sequence
@@ -235,7 +235,7 @@ class KoVAE(nn.Module):
         '''
 
         a0 = self.args.w_rec
-        a1 = self.args.w_kl
+        a1 = self.args.w_kl if w_kl is None else w_kl
         a2 = self.args.w_pred_prior
         batch_size = x.size(0)
 
