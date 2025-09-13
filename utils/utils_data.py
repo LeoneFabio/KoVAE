@@ -56,9 +56,17 @@ def discretize_categorical_features(df):
     if "event" in df.columns:
         df["event"] = (df["event"] >= 0.5).astype(int)
 
-    # Charge mode: round to nearest int in {0,1,2,3}
+    '''# Charge mode: round to nearest int in {0,1,2,3}
     if "charge_mode" in df.columns:
-        df["charge_mode"] = df["charge_mode"].round().clip(0, 3).astype(int)
+        df["charge_mode"] = df["charge_mode"].round().clip(0, 3).astype(int)'''
+
+    # Allowed target values
+    targets = np.array([0, 120, 240, 360])
+    
+    # Vectorized approach (faster than apply)
+    distances = np.abs(df["charge_mode"].values[:, None] - targets[None, :])
+    nearest_indices = distances.argmin(axis=1)
+    df["charge_mode"] = targets[nearest_indices]
 
     return df
 
@@ -236,9 +244,9 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
         df['duration_minutes'] > 0,
         (df['end_odo'] - df['odo']) / (df['duration_minutes'] / 60),
         0
-    )
+    )'''
     df['charge'] =  df['end_soc'] - df['soc']
-    
+    '''
     # discharge_per_km: only in trips
     df['discharge_per_km'] = np.where(
         (df['event'] == 'trip') & (df['km_driven'] != 0),
@@ -256,7 +264,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Drop original time columns
     df = df.drop(columns=['timestamp', 'end_time'])
     df = df.drop(columns=['odo', 'end_odo'])  # Drop odometer readings if not needed
-    #df = df.drop(columns=['soc', 'end_soc'])
+    df = df.drop(columns=['soc', 'end_soc'])  # Drop soc if not needed
     
     ######################### FILTERING SECTION #######################################
     # Apply filtering before encoding
@@ -277,16 +285,16 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     event_mapping = {'trip': 0, 'charge': 1}
     df['event'] = df['event'].map(event_mapping)
 
-    # Encode 'charge_mode': NaN → 0, '120' → 1, '240' → 2, 'DC Charging' → 3
+    # Encode 'charge_mode': NaN → 0, '120' → 120, '240' → 240, 'DC Charging' → 360
     def encode_charge_mode(val):
         if pd.isna(val):
             return 0
         elif '120' in str(val).strip():
-            return 1
+            return 120
         elif '240' in str(val).strip():
-            return 2
+            return 240
         elif 'DC' in str(val):
-            return 3
+            return 360
         else:
             return 0  # fallback for unexpected values
 

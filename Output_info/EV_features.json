@@ -1,1 +1,1 @@
-["soc", "end_soc", "event", "charge_mode", "duration_minutes", "km_driven"]
+["event", "charge_mode", "duration_minutes", "km_driven", "charge"]

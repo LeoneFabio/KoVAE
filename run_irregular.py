@@ -240,7 +240,7 @@ def main(args):
     THRESHOLD = 0.0050
     current_w_kl = 0'''
     
-    w_kl_schedule = frange_monotonic_cosine(start=0.0, stop=args.w_kl, n_epoch_stop_warm_up=int(args.epochs*7/8), n_epoch=args.epochs)
+    w_kl_schedule = frange_monotonic_cosine(start=0.0, stop=args.w_kl, n_epoch_stop_warm_up=int(args.epochs*9/12), n_epoch=args.epochs)
     
     for epoch in range(0, args.epochs):
         current_w_kl = w_kl_schedule[epoch]
