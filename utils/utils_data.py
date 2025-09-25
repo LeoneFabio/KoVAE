@@ -261,6 +261,8 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
         0
     )'''
 
+    #df["index"] = df.index
+
     # Drop original time columns
     df = df.drop(columns=['timestamp', 'end_time'])
     df = df.drop(columns=['odo', 'end_odo'])  # Drop odometer readings if not needed
