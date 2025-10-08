@@ -27,7 +27,7 @@ class TabularVisualizer:
             filename : str
             save_dir : str or None
         """
-        # Flatten across batch, time, and features
+        # Flatten across batch, seq_len, and features
         real_flat = real.flatten()
         recon_flat = recon.flatten()
         synthetic_flat = synthetic.flatten()

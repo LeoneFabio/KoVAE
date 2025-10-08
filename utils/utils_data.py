@@ -52,14 +52,12 @@ def inverse_MinMaxScaler(norm_data, min_data, max_data):
 
 
 def discretize_categorical_features(df):
+    
     # Event: closest to 0 or 1
     if "event" in df.columns:
         df["event"] = (df["event"] >= 0.5).astype(int)
 
-    '''# Charge mode: round to nearest int in {0,1,2,3}
-    if "charge_mode" in df.columns:
-        df["charge_mode"] = df["charge_mode"].round().clip(0, 3).astype(int)'''
-
+    
     # Allowed target values
     targets = np.array([0, 120, 240, 360])
     
@@ -67,6 +65,34 @@ def discretize_categorical_features(df):
     distances = np.abs(df["charge_mode"].values[:, None] - targets[None, :])
     nearest_indices = distances.argmin(axis=1)
     df["charge_mode"] = targets[nearest_indices]
+
+    '''OHE
+    # --- Fix event ---
+    event_cols = [c for c in df.columns if c.startswith("event_")]
+    if event_cols:
+        # Snap to argmax (ensures valid one-hot)
+        df[event_cols] = (df[event_cols].eq(df[event_cols].max(axis=1), axis=0)).astype(int)
+
+        # Collapse back into single numeric event
+        df["event"] = df[event_cols].idxmax(axis=1).map({
+            "event_trip": 0,
+            "event_charge": 1
+        })
+        df.drop(columns=event_cols, inplace=True)
+
+    # --- Fix charge_mode ---
+    charge_cols = [c for c in df.columns if c.startswith("charge_mode_")]
+    if charge_cols:
+        df[charge_cols] = (df[charge_cols].eq(df[charge_cols].max(axis=1), axis=0)).astype(int)
+
+
+        df["charge_mode"] = df[charge_cols].idxmax(axis=1).map({
+            "charge_mode_0": 0,
+            "charge_mode_120": 120,
+            "charge_mode_240": 240,
+            "charge_mode_dc": 360
+        })
+        df.drop(columns=charge_cols, inplace=True)'''
 
     return df
 
@@ -280,7 +306,7 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
             df = df[df['charge_mode'].astype(str).str.strip().str.lower().str.contains(charge_mode.lower())]
     ###################################################################################
     
-
+    
     """ Label encoding """
     
     # Encode 'event': trip → 0, charge → 1
@@ -302,33 +328,40 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
 
     df['charge_mode'] = df['charge_mode'].apply(encode_charge_mode)
     
+    '''
+    """ One-hot encoding """
+    # --- Clean event ---
+    df["event"] = df["event"].astype(str).str.strip().str.lower()
 
-    
-    """One-hot encoding"""
-    
-    '''# Normalize/clean categorical columns
-    df['event'] = df['event'].str.strip().str.lower()
-    df['charge_mode'] = df['charge_mode'].astype(str).str.strip()
+    # One-hot encode event
+    df = pd.get_dummies(df, columns=["event"], prefix="event")
 
-    # One-hot encode 'event' (trip, charge)
-    df = pd.get_dummies(df, columns=['event'], prefix='event')
-
-    # Map 'charge_mode' to categorical labels first
-    def map_charge_mode(val):
-        if pd.isna(val) or val.lower() == 'nan':
-            return 'none'
-        elif val == '240':
-            return '240'
-        elif 'DC' in val.upper():
-            return 'dc'
+    # --- Clean charge_mode ---
+    def normalize_charge_mode(val):
+        if pd.isna(val) or str(val).strip() == "0":
+            return "0"
+        v = str(val).strip().lower()
+        if "120" in v:
+            return "120"
+        elif "240" in v:
+            return "240"
+        elif "dc" in v:
+            return "dc"
         else:
-            return 'none'  # fallback for unexpected values
+            return "0"
 
-    df['charge_mode'] = df['charge_mode'].apply(map_charge_mode)
+    df["charge_mode"] = df["charge_mode"].apply(normalize_charge_mode)
 
-    # One-hot encode 'charge_mode' (none, 240, dc)
-    df = pd.get_dummies(df, columns=['charge_mode'], prefix='charge')'''
-    
+    # One-hot encode charge_mode
+    df = pd.get_dummies(df, columns=["charge_mode"], prefix="charge_mode")
+
+     # Force all OHE dummy variables to int
+    for col in df.columns:
+        if df[col].dtype == "bool":
+            df[col] = df[col].astype(int)'''
+
+
+            
     
     
     ######################## HANDLE MISSING VALUES ######################################
@@ -425,8 +458,8 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
 
                 self.original_sample = []
                 ori_seq_data = []
-
-                for i in range(len(norm_data) - seq_len + 1):
+                stride = seq_len
+                for i in range(0, len(norm_data) - seq_len + 1, stride):
                     x = norm_data[i: i + seq_len].copy()
                     ori_seq_data.append(x)
 
@@ -447,7 +480,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 norm_data[removed_points] = float('nan')
                 norm_data = np.concatenate((norm_data, time), axis=1)
                 seq_data = []
-                for i in range(len(norm_data) - seq_len + 1):
+                for i in range(0, len(norm_data) - seq_len + 1, stride):
                     x = norm_data[i: i + seq_len]
                     seq_data.append(x)
                 self.samples = seq_data.copy()
