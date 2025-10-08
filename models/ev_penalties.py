@@ -68,11 +68,8 @@ class EVDomainPenalties:
         has_charge = torch.sigmoid(10 * (x_rec[:, :, charge_idx] - min_charge_delta))
         is_charging_event = is_charge * has_charge  # smooth AND
 
-        print("x_rec shape:", x_rec.shape)
-        print("event_idx:", event_idx, "charge_idx:", charge_idx)
-        print("is_charge:", is_charge.mean().item(), "has_charge:", has_charge.mean().item())
 
-        # === DEBUG INFO ===
+        '''# === DEBUG INFO ===
     
         print("\n[DEBUG: Sigmoid smoothing check]")
         print(f"  x_rec shape: {tuple(x_rec.shape)}")
@@ -100,7 +97,7 @@ class EVDomainPenalties:
         print(f"  requires_grad: x_rec={x_rec.requires_grad}, is_charge={is_charge.requires_grad}, is_charging_event={is_charging_event.requires_grad}")
         print(f"  grad_fn: is_charge={is_charge.grad_fn}, is_charging_event={is_charging_event.grad_fn}")
     
-        print("  Sigmoid smoothing debug complete.\n")
+        print("  Sigmoid smoothing debug complete.\n")'''
     
 
         # Check for consecutive charging: current is charge AND next is charge

@@ -82,7 +82,7 @@ def agg_losses(LOSSES, losses):
         LOSSES[jj].append(loss.item())
     return LOSSES
 
-def log_losses(epoch, losses_tr, names):
+def log_losses(epoch, losses_tr, names, weights):
     losses_avg_tr = []
 
     for loss in losses_tr:
@@ -90,7 +90,10 @@ def log_losses(epoch, losses_tr, names):
 
     loss_str_tr = 'Epoch {}, TRAIN: '.format(epoch + 1)
     for jj, loss in enumerate(losses_avg_tr):
-        loss_str_tr += '{}={:.3e}, \t'.format(names[jj], loss)
+        if jj != 0:
+            loss_str_tr += '{}={:.3e} (weighted={:.3e}), \t'.format(names[jj], loss, loss*weights[jj])
+        else:
+            loss_str_tr += '{}={:.3e}, \t'.format(names[jj], loss)
     logging.info(loss_str_tr)
     return losses_avg_tr[0]
 
@@ -197,6 +200,7 @@ def main(args):
     
             optimizer.zero_grad()
             x_rec, z_dist, z_prior_dist, z_prior_sample  = model(train_coeffs, time, final_index)
+    
 
             losses = model.loss(x, x_rec, z_dist, z_prior_dist, z_prior_sample, w_kl=current_w_kl)
             # accumulate penalties
@@ -208,13 +212,23 @@ def main(args):
             optimizer.step()
     
             losses_agg_tr = agg_losses(losses_agg_tr, losses[:4])
-            
-        log_losses(epoch, losses_agg_tr, model.names)
+        
+        weights = [1, args.w_rec, current_w_kl, args.w_pred_prior]
+        log_losses(epoch, losses_agg_tr, model.names, weights)
         
         # compute mean penalties for the epoch
         mean_penalties = {k: v / num_batches for k, v in penalty_accumulator.items()}
-        logging.info(f"EV Penalties: {mean_penalties}")
+        mean_fmt = {k: f"{v:.3e}" for k, v in mean_penalties.items()}
+        weighted_fmt = {k: f"{(v * penalty_config.get(k, 1.0)):.3e}" for k, v in mean_penalties.items()}
+        
+        logging.info(f"EV Penalties: {mean_fmt}")
+        logging.info(f"EV Penalties (weighted): {weighted_fmt}")
         logging.info('#'*30)
+
+        penalty_config = {
+        'trip_soc': 0.0,
+        'consecutive_charge': 0.001
+    }
     
         # =========================
         # OUTPUTS AND VISUALIZATION
