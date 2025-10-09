@@ -458,7 +458,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
 
                 self.original_sample = []
                 ori_seq_data = []
-                stride = seq_len
+                stride = 1
                 for i in range(0, len(norm_data) - seq_len + 1, stride):
                     x = norm_data[i: i + seq_len].copy()
                     ori_seq_data.append(x)

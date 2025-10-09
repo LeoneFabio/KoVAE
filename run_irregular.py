@@ -154,10 +154,9 @@ def main(args):
     # Define which penalties to activate and their weights
     penalty_config = {
         'trip_soc': 0.0,
-        'consecutive_charge': 0.001
+        'consecutive_charge': 1.0
     }
 
-    
     # Wrap it
     model = KoVAEWithEVPenalties(model, penalty_config, args.inp_dim, args.seq_len).to(args.device)
 
@@ -224,11 +223,6 @@ def main(args):
         logging.info(f"EV Penalties: {mean_fmt}")
         logging.info(f"EV Penalties (weighted): {weighted_fmt}")
         logging.info('#'*30)
-
-        penalty_config = {
-        'trip_soc': 0.0,
-        'consecutive_charge': 0.001
-    }
     
         # =========================
         # OUTPUTS AND VISUALIZATION
