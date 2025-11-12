@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from viz.latent_traversals import LatentTraverser
+import matplotlib.ticker as ticker
 
 class TabularVisualizer:
     def __init__(self, model, output_dir='./visualizations', save_plots=True):
@@ -98,6 +99,59 @@ class TabularVisualizer:
             plt.close()
         else:
             plt.show()
+
+    
+    def plot_weighted_losses(
+        self,
+        total_losses: np.ndarray,
+        rec_losses: np.ndarray,
+        kl_losses: np.ndarray,
+        pred_losses: np.ndarray,
+        title: str = "Weighted Training Loss Components",
+        filename: str = "weighted_losses.png"
+    ):
+        """
+        Creates and saves plots of weighted loss components.
+    
+        Parameters
+        ----------
+        total_losses : np.ndarray
+            Array of total weighted losses over epochs.
+        rec_losses : np.ndarray
+            Weighted reconstruction losses.
+        kl_losses : np.ndarray
+            Weighted KL divergence losses.
+        pred_losses : np.ndarray
+            Weighted prediction prior losses.
+        """
+    
+        epochs = np.arange(1, len(total_losses) + 1)
+    
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, rec_losses, label='Weighted Reconstruction Loss', color='C0', linewidth=2)
+        plt.plot(epochs, kl_losses, label='Weighted KL Loss', color='C1', linewidth=2)
+        plt.plot(epochs, pred_losses, label='Weighted Pred Prior Loss', color='C2', linewidth=2)
+        plt.plot(epochs, total_losses, label='Total Weighted Loss', color='k', linestyle='--', linewidth=2.5)
+    
+        plt.xlabel('Epoch', fontsize=14)
+        plt.ylabel('Weighted Loss Value', fontsize=14)
+        plt.title(title, fontsize=16, pad=15)
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.gca().xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+        plt.yscale('log')
+        plt.tight_layout()
+
+        
+        # Save 
+        if self.save_plots:
+            path = os.path.join(self.output_dir, filename)
+            plt.savefig(path, dpi=150)
+            plt.close()
+        else:
+            plt.show()
+    
+
 
 
     def reconstructions(self, x, x_rec, filename='recon.png', max_samples=8):

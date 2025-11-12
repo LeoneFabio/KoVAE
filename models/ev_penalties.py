@@ -36,7 +36,7 @@ class EVDomainPenalties:
         penalty = torch.sum(trip_positive_charge) / batch_size
         return penalty
     
-    @staticmethod
+    '''@staticmethod
     def compute_consecutive_charge_penalty(x_rec, event_idx=0, charge_threshold=0.5, 
                                           charge_idx=4, min_charge_delta=0.01):
         """
@@ -58,52 +58,81 @@ class EVDomainPenalties:
             return torch.tensor(0.0, device=x_rec.device)
         
         # Identify charging events
-        '''is_charge = x_rec[:, :, event_idx] >= charge_threshold  # (B, T)
+        """is_charge = x_rec[:, :, event_idx] >= charge_threshold  # (B, T)
         has_charge = x_rec[:, :, charge_idx] > min_charge_delta  # Actually adding charge
+        is_charging_event = (is_charge & has_charge).float()  # (B, T)"""
         
-        is_charging_event = (is_charge & has_charge).float()  # (B, T)'''
         
-        
-        is_charge = torch.sigmoid(10 * (x_rec[:, :, event_idx] - charge_threshold))  # smooth ">= threshold"
-        has_charge = torch.sigmoid(10 * (x_rec[:, :, charge_idx] - min_charge_delta))
+        is_charge = torch.sigmoid(10 * (x_rec[:, :, event_idx] - charge_threshold))  #  event > 0.5 => 'charge'
+        has_charge = torch.sigmoid(10 * (x_rec[:, :, charge_idx] - min_charge_delta)) # delta_soc > 0.01 => 'charge' 
         is_charging_event = is_charge * has_charge  # smooth AND
-
-
-        '''# === DEBUG INFO ===
-    
-        print("\n[DEBUG: Sigmoid smoothing check]")
-        print(f"  x_rec shape: {tuple(x_rec.shape)}")
-        print(f"  event_idx={event_idx}, charge_idx={charge_idx}")
-        print(f"  charge_threshold={charge_threshold}, min_charge_delta={min_charge_delta}")
-    
-        # Ranges of inputs to the sigmoid
-        evt_vals = x_rec[:, :, event_idx]
-        chg_vals = x_rec[:, :, charge_idx]
-    
-        print(f"  event value stats: min={evt_vals.min().item():.4f}, max={evt_vals.max().item():.4f}, mean={evt_vals.mean().item():.4f}")
-        print(f"  charge value stats: min={chg_vals.min().item():.4f}, max={chg_vals.max().item():.4f}, mean={chg_vals.mean().item():.4f}")
-    
-        # Check smooth activation ranges
-        print(f"  is_charge (sigmoid output): min={is_charge.min().item():.4f}, max={is_charge.max().item():.4f}, mean={is_charge.mean().item():.4f}")
-        print(f"  has_charge (sigmoid output): min={has_charge.min().item():.4f}, max={has_charge.max().item():.4f}, mean={has_charge.mean().item():.4f}")
-        print(f"  is_charging_event (combined): min={is_charging_event.min().item():.4f}, max={is_charging_event.max().item():.4f}, mean={is_charging_event.mean().item():.4f}")
-    
-        # Check if the sigmoid saturates (values too close to 0 or 1)
-        saturate_is_charge = ((is_charge < 0.01) | (is_charge > 0.99)).float().mean().item()
-        saturate_has_charge = ((has_charge < 0.01) | (has_charge > 0.99)).float().mean().item()
-        print(f" Saturation ratio: is_charge={saturate_is_charge:.3f}, has_charge={saturate_has_charge:.3f}")
-    
-        # Check gradient connectivity
-        print(f"  requires_grad: x_rec={x_rec.requires_grad}, is_charge={is_charge.requires_grad}, is_charging_event={is_charging_event.requires_grad}")
-        print(f"  grad_fn: is_charge={is_charge.grad_fn}, is_charging_event={is_charging_event.grad_fn}")
-    
-        print("  Sigmoid smoothing debug complete.\n")'''
     
 
         # Check for consecutive charging: current is charge AND next is charge
         consecutive_charges = is_charging_event[:, :-1] * is_charging_event[:, 1:]  # (B, T-1)
         
         penalty = torch.sum(consecutive_charges) / batch_size
+        return penalty'''
+
+    @staticmethod
+    def compute_consecutive_charge_penalty(x_rec, event_idx=0, charge_threshold=0.5, 
+                                          charge_idx=4, charge_mode_idx=1, min_charge_delta=0.01,
+                                          smoothing_temp=10.0):
+        """
+        Penalize multiple consecutive charging events (COMPREHENSIVE VERSION)
+        
+        A "charging event" is defined as ANY of:
+        - event = 'charge' (event_idx > threshold)
+        - positive SoC delta (charge_idx > min_delta)  
+        - active charge_mode (charge_mode_idx ≠ 0/None)
+        
+        
+        Args:
+            x_rec: Reconstructed sequence (B, T, C)
+            event_idx: Index of event type
+            charge_threshold: Threshold to classify as "charge" event
+            charge_idx: Index of charge/SoC delta column
+            charge_mode_idx: Index of charge_mode column
+            min_charge_delta: Minimum charge change to consider as actual charging
+            smoothing_temp: Temperature for sigmoid smoothing
+        
+        Returns:
+            penalty: Scalar penalty value
+        """
+        batch_size, seq_len, channels = x_rec.shape
+        
+        if seq_len < 2:
+            return torch.tensor(0.0, device=x_rec.device)
+        
+        # ===== OR-based detection (ANY indicator = charging) =====
+        # A charging event is detected if ANY of these conditions is true:
+        
+        # Signal 1: Event type indicates charging
+        is_charge_by_event = torch.sigmoid(smoothing_temp * (x_rec[:, :, event_idx] - charge_threshold))
+        
+        # Signal 2: Positive SoC delta (battery increasing)
+        has_positive_soc = torch.sigmoid(smoothing_temp * (x_rec[:, :, charge_idx] - min_charge_delta))
+        
+        # Signal 3: Active charge mode (not 'None')
+        has_charge_mode = torch.sigmoid(smoothing_temp * (x_rec[:, :, charge_mode_idx] - 0.1))
+        
+        # SMOOTH OR operation: a OR b = a + b - a*b (probabilistic sum)
+        # For three conditions: P(A or B or C) = 1 - P(not A) * P(not B) * P(not C)
+        not_charge_event = (1 - is_charge_by_event)
+        not_positive_soc = (1 - has_positive_soc)
+        not_charge_mode = (1 - has_charge_mode)
+        
+        # Probability that it's NOT a charge in any sense
+        not_charging_at_all = not_charge_event * not_positive_soc * not_charge_mode
+        
+        # Probability that it IS a charge in at least one sense
+        is_charging_event = 1 - not_charging_at_all
+        
+        # Detect consecutive charging events
+        consecutive_charges = is_charging_event[:, :-1] * is_charging_event[:, 1:]
+        
+        penalty = torch.sum(consecutive_charges) / batch_size
+        
         return penalty
     
 

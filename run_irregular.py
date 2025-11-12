@@ -84,6 +84,7 @@ def agg_losses(LOSSES, losses):
 
 def log_losses(epoch, losses_tr, names, weights):
     losses_avg_tr = []
+    return_losses = {}
 
     for loss in losses_tr:
         losses_avg_tr.append(np.mean(loss))
@@ -92,10 +93,12 @@ def log_losses(epoch, losses_tr, names, weights):
     for jj, loss in enumerate(losses_avg_tr):
         if jj != 0:
             loss_str_tr += '{}={:.3e} (weighted={:.3e}), \t'.format(names[jj], loss, loss*weights[jj])
+            return_losses[names[jj]] = loss*weights[jj]
         else:
             loss_str_tr += '{}={:.3e}, \t'.format(names[jj], loss)
+            return_losses[names[jj]] = loss
     logging.info(loss_str_tr)
-    return losses_avg_tr[0]
+    return return_losses
 
 
 parser = define_args()
@@ -144,7 +147,7 @@ def main(args):
 
     disc_dim = None
     if args.dataset == 'EV':
-        disc_dim = [2, 3]
+        disc_dim = [2, 4]
         latent_spec = {'cont': args.z_dim, 'disc': disc_dim}
     else:
         latent_spec = {'cont': args.z_dim}
@@ -154,7 +157,7 @@ def main(args):
     # Define which penalties to activate and their weights
     penalty_config = {
         'trip_soc': 0.0,
-        'consecutive_charge': 1.0
+        'consecutive_charge': 0.0
     }
 
     # Wrap it
@@ -174,6 +177,12 @@ def main(args):
 
     end_warm_up = 900 if args.epochs > 1200 else int(args.epochs*9/12)
     w_kl_schedule = frange_monotonic_cosine(start=0.0, stop=args.w_kl, n_epoch_stop_warm_up=end_warm_up, n_epoch=args.epochs)
+
+    total_losses = []
+    rec_losses = []
+    kl_losses = []
+    pred_losses = []
+    
     
     for epoch in range(0, args.epochs):
         current_w_kl = w_kl_schedule[epoch]
@@ -213,7 +222,12 @@ def main(args):
             losses_agg_tr = agg_losses(losses_agg_tr, losses[:4])
         
         weights = [1, args.w_rec, current_w_kl, args.w_pred_prior]
-        log_losses(epoch, losses_agg_tr, model.names, weights)
+        weighted_losses = log_losses(epoch, losses_agg_tr, model.names, weights)
+
+        total_losses.append(weighted_losses['total'])
+        rec_losses.append(weighted_losses['rec'])
+        kl_losses.append(weighted_losses['kl'])
+        pred_losses.append(weighted_losses['pred_prior'])
         
         # compute mean penalties for the epoch
         mean_penalties = {k: v / num_batches for k, v in penalty_accumulator.items()}
@@ -227,7 +241,7 @@ def main(args):
         # =========================
         # OUTPUTS AND VISUALIZATION
         # =========================
-        if (epoch + 1) % 10 == 0 or (epoch + 1) == args.epochs:
+        if (epoch + 1) % 20 == 0 or (epoch + 1) == args.epochs:
             logging.info(f"Generating outputs and visualizations at epoch {epoch+1}")
             
             # generate datasets:
@@ -296,6 +310,9 @@ def main(args):
             visualizer.reconstructions(original, recon, filename=f'recon_{epoch+1}.png')
             visualizer.plot_feature_distributions(original, recon, generated_data_denormalized, feature_names=features, filename=f'per_feature_pdfs_{epoch+1}.png')
             visualizer.plot_global_distribution(original, recon, generated_data_denormalized, filename=f'global_pdf_{epoch+1}.png')
+            visualizer.plot_weighted_losses(np.array(total_losses), np.array(rec_losses), np.array(kl_losses), np.array(pred_losses), filename=f'weighted_losses_{epoch+1}.png')
+
+            
             
             if args.dataset == 'EV':
                 visualizer.samples(generated_data_denormalized)
@@ -393,6 +410,7 @@ def main(args):
             visualizer.latent_traversal(disc_idx=disc_idx)'''
 
 
+    
     #EVALUATION PART ---- Evaluate the generated data through Discriminative score and Predictive score
     from metrics.discriminative_torch import discriminative_score_metrics
     from metrics.predictive_metrics import predictive_score_metrics
@@ -400,7 +418,7 @@ def main(args):
     args.device = set_seed_device(args.seed)
     metric_iterations = 10
     
-    '''# Discriminative eval
+    # Discriminative eval
     disc_res = []
     for ii in range(metric_iterations):
         dsc = discriminative_score_metrics(original, generated_data, args)
@@ -420,10 +438,10 @@ def main(args):
     
     print('test/pred_mean: ', pred_mean)
     print('test/pred_std: ', pred_std)
-    print('-'*40)'''
+    print('-'*40)
     
     # Visualization eval
-    #visualization(original, recon, 'pca', args) --> it doesn't work if seq_len == num of processed rows, that is n_batches=1
+    visualization(original, recon, 'pca', args)
     visualization(original, recon, 'tsne', args)
     
 

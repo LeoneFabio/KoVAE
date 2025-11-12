@@ -59,7 +59,7 @@ def discretize_categorical_features(df):
 
     
     # Allowed target values
-    targets = np.array([0, 120, 240, 360])
+    targets = np.array([0, 1, 2, 3])
     
     # Vectorized approach (faster than apply)
     distances = np.abs(df["charge_mode"].values[:, None] - targets[None, :])
@@ -318,11 +318,11 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
         if pd.isna(val):
             return 0
         elif '120' in str(val).strip():
-            return 120
+            return 1
         elif '240' in str(val).strip():
-            return 240
+            return 2
         elif 'DC' in str(val):
-            return 360
+            return 3
         else:
             return 0  # fallback for unexpected values
 
