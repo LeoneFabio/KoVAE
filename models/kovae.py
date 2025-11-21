@@ -82,54 +82,6 @@ class VKDecoder(nn.Module):
         x_hat = nn.functional.sigmoid(self.linear(h))
         return x_hat
         
-        '''############################################################
-        # Separate heads for different outputs
-        self.event_head = nn.Linear(self.hidden_dim * 2, 1)  # Binary: trip/charge
-        self.charge_mode_head = nn.Linear(self.hidden_dim * 2, 1)  # 0/120/240/DC
-        self.duration_head = nn.Linear(self.hidden_dim * 2, 1)
-        self.km_head = nn.Linear(self.hidden_dim * 2, 1)
-        self.charge_head = nn.Linear(self.hidden_dim * 2, 1)
-    
-    def forward(self, z):
-        h, _ = self.rnn(z)
-        
-        # Event type
-        event = torch.sigmoid(self.event_head(h))
-        
-        # Duration and km (always positive)
-        duration = F.softplus(self.duration_head(h))
-        km = F.softplus(self.km_head(h))
-        
-        # Charge: conditional on event type
-        charge_logit = self.charge_head(h)
-        
-        # If trip (event < 0.5), force negative charge
-        # If charge (event >= 0.5), force positive charge
-        charge = torch.where(
-            event < 0.5,
-            -F.softplus(charge_logit),  # Negative for trips
-            F.softplus(charge_logit)    # Positive for charges
-        )
-        
-        # Charge mode: conditional on event
-        charge_mode_logits = self.charge_mode_head(h)
-        charge_mode = F.softmax(charge_mode_logits, dim=-1)
-        
-        # Force 'None' mode for trips
-        none_mode = torch.zeros_like(charge_mode)
-        none_mode[:, :, 0] = 1.0  # Assuming index 2 is 'None'
-        charge_mode = torch.where(
-            event < 0.5,
-            none_mode,
-            charge_mode
-        )
-        
-        # Concatenate all outputs
-        x_hat = torch.cat([event, charge_mode, duration, km, charge], dim=-1)
-        
-        return x_hat
-        ###################################################################'''
-        
 
 class KoVAE(nn.Module):
     def __init__(self, args, latent_spec=None, temperature=0.67):

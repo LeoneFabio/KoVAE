@@ -150,6 +150,56 @@ class TabularVisualizer:
             plt.close()
         else:
             plt.show()
+
+    def plot_losses(
+        self,
+        total_losses: np.ndarray,
+        rec_losses: np.ndarray,
+        kl_losses: np.ndarray,
+        pred_losses: np.ndarray,
+        title: str = "Training Loss Components",
+        filename: str = "losses.png"
+    ):
+        """
+        Creates and saves plots of weighted loss components.
+    
+        Parameters
+        ----------
+        total_losses : np.ndarray
+            Array of total losses over epochs.
+        rec_losses : np.ndarray
+            Reconstruction losses.
+        kl_losses : np.ndarray
+            KL divergence losses.
+        pred_losses : np.ndarray
+            Prediction prior losses.
+        """
+    
+        epochs = np.arange(1, len(total_losses) + 1)
+    
+        plt.figure(figsize=(10, 6))
+        plt.plot(epochs, rec_losses, label='Reconstruction Loss', color='C0', linewidth=2)
+        plt.plot(epochs, kl_losses, label='KL Loss', color='C1', linewidth=2)
+        plt.plot(epochs, pred_losses, label='Pred Prior Loss', color='C2', linewidth=2)
+        plt.plot(epochs, total_losses, label='Total Loss', color='k', linestyle='--', linewidth=2.5)
+    
+        plt.xlabel('Epoch', fontsize=14)
+        plt.ylabel('Loss Value', fontsize=14)
+        plt.title(title, fontsize=16, pad=15)
+        plt.legend(fontsize=12)
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.gca().xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+        plt.yscale('log')
+        plt.tight_layout()
+
+        
+        # Save 
+        if self.save_plots:
+            path = os.path.join(self.output_dir, filename)
+            plt.savefig(path, dpi=150)
+            plt.close()
+        else:
+            plt.show()
     
 
 

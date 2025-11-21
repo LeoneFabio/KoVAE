@@ -182,6 +182,11 @@ def main(args):
     rec_losses = []
     kl_losses = []
     pred_losses = []
+
+    unweighted_total_losses = []
+    unweighted_rec_losses = []
+    unweighted_kl_losses = []
+    unweighted_pred_losses = []
     
     
     for epoch in range(0, args.epochs):
@@ -224,10 +229,15 @@ def main(args):
         weights = [1, args.w_rec, current_w_kl, args.w_pred_prior]
         weighted_losses = log_losses(epoch, losses_agg_tr, model.names, weights)
 
-        total_losses.append(weighted_losses['total'])
+        
         rec_losses.append(weighted_losses['rec'])
+        unweighted_rec_losses.append(weighted_losses['rec'] / args.w_rec)
         kl_losses.append(weighted_losses['kl'])
+        unweighted_kl_losses.append(weighted_losses['kl'] / current_w_kl)
         pred_losses.append(weighted_losses['pred_prior'])
+        unweighted_pred_losses.append(weighted_losses['pred_prior'] / args.w_pred_prior)
+        total_losses.append(weighted_losses['total'])
+        unweighted_total_losses.append(weighted_losses['rec'] / args.w_rec + weighted_losses['kl'] / current_w_kl + weighted_losses['pred_prior'] / args.w_pred_prior)
         
         # compute mean penalties for the epoch
         mean_penalties = {k: v / num_batches for k, v in penalty_accumulator.items()}
@@ -241,7 +251,7 @@ def main(args):
         # =========================
         # OUTPUTS AND VISUALIZATION
         # =========================
-        if (epoch + 1) % 20 == 0 or (epoch + 1) == args.epochs:
+        if (epoch + 1) % 150 == 0 or (epoch + 1) == args.epochs:
             logging.info(f"Generating outputs and visualizations at epoch {epoch+1}")
             
             # generate datasets:
@@ -307,107 +317,14 @@ def main(args):
             #PLOTS -> Visualization of reconstruction, generated data and latent traversals
             visualizer = TabularVisualizer(model)
             
-            visualizer.reconstructions(original, recon, filename=f'recon_{epoch+1}.png')
             visualizer.plot_feature_distributions(original, recon, generated_data_denormalized, feature_names=features, filename=f'per_feature_pdfs_{epoch+1}.png')
             visualizer.plot_global_distribution(original, recon, generated_data_denormalized, filename=f'global_pdf_{epoch+1}.png')
             visualizer.plot_weighted_losses(np.array(total_losses), np.array(rec_losses), np.array(kl_losses), np.array(pred_losses), filename=f'weighted_losses_{epoch+1}.png')
-
+            visualizer.plot_losses(np.array(unweighted_total_losses), np.array(unweighted_rec_losses), np.array(unweighted_kl_losses), np.array(unweighted_pred_losses), filename=f'losses_{epoch+1}.png')
             
-            
-            if args.dataset == 'EV':
-                visualizer.samples(generated_data_denormalized)
-            else:
-                visualizer.samples(generated_data)
-            if 'cont' in latent_spec:    
-                for cont_idx in range(args.z_dim):
-                    visualizer.latent_traversal(cont_idx=cont_idx)
-            if 'disc' in latent_spec:
-                for disc_idx in range(len(disc_dim)):
-                    visualizer.latent_traversal(disc_idx=disc_idx)
 
 
     logging.info("Training is complete")
-
-    '''
-    
-    ########## OUTPUTS AND VISUALIZATIONS ##########
-    # generate datasets:
-    args.device = set_seed_device(args.seed)
-    getter = Getter(model)
-    generated_data = getter.get_generated_data(train_loader)
-
-    if args.dataset == 'EV':
-        # De-normalize the generated data
-        generated_data_denormalized = inverse_MinMaxScaler(generated_data, min_data, max_data)
-
-    # save data in torch format in the directory ./Generated_data if not exist
-    output_dir = './Generated_data'
-    output_info_dir = './Output_info'
-    file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_generated_data.pt')
-    file_path_csv = os.path.join(output_dir, f'{args.dataset}_generated_data.csv')
-    
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    with open(os.path.join(output_info_dir, 'EV_features.json'), 'r') as f:
-            features = json.load(f)
-
-    if args.dataset == 'EV':
-        torch.save(torch.from_numpy(generated_data_denormalized), file_path_torch_tensor)
-        #generated_data_denormalized is a numpy array (n, seq_len, num_features), now I have to create a df considering the header names saved in output_info_dir/EV_features.json
-        df = pd.DataFrame(generated_data_denormalized.reshape(-1, generated_data_denormalized.shape[-1]), columns=features)
-        df = discretize_categorical_features(df)
-        df.to_csv(file_path_csv, index=False)
-
-    else:
-        torch.save(torch.from_numpy(generated_data), file_path_torch_tensor)
-    logging.info(f"Generated data saved into {output_dir}")
-    
-    #Reconstruct data
-    recon = getter.get_reconstructed_data(train_loader, time, final_index)
-    if args.dataset == 'EV':
-        # De-normalize the reconstructed data
-        recon = inverse_MinMaxScaler(recon, min_data, max_data)
-    file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.pt')
-    file_path_csv = os.path.join(output_dir, f'{args.dataset}_reconstructed_data.csv')
-    torch.save(torch.from_numpy(recon), file_path_torch_tensor)
-    df = pd.DataFrame(recon.reshape(-1, recon.shape[-1]), columns=features)
-    df = discretize_categorical_features(df)
-    df.to_csv(file_path_csv, index=False)
-    logging.info(f"Reconstructed data saved into {output_dir}")
-    
-    # Embedded original data -> data reference from reconstruction 
-    original = getter.get_original_data(train_loader)
-    if args.dataset == 'EV':
-        # De-normalize the original data
-        original = inverse_MinMaxScaler(original, min_data, max_data)
-    file_path_torch_tensor = os.path.join(output_dir, f'{args.dataset}_original_data.pt')
-    file_path_csv = os.path.join(output_dir, f'{args.dataset}_original_data.csv')
-    torch.save(torch.from_numpy(original), file_path_torch_tensor)
-    df = pd.DataFrame(original.reshape(-1, original.shape[-1]), columns=features)
-    df = discretize_categorical_features(df)
-    df.to_csv(file_path_csv, index=False)
-    logging.info(f"Original data saved into {output_dir}")
-
-
-    
-    #PLOTS -> Visualization of reconstruction, generated data and latent traversals
-    visualizer = TabularVisualizer(model)
-    
-    visualizer.reconstructions(original, recon)
-    visualizer.plot_feature_distributions(original, recon, generated_data_denormalized, feature_names=features)
-    visualizer.plot_global_distribution(original, recon, generated_data_denormalized)
-    
-    if args.dataset == 'EV':
-        visualizer.samples(generated_data_denormalized)
-    else:
-        visualizer.samples(generated_data)
-    if 'cont' in latent_spec:    
-        for cont_idx in range(args.z_dim):
-            visualizer.latent_traversal(cont_idx=cont_idx)
-    if 'disc' in latent_spec:
-        for disc_idx in range(len(disc_dim)):
-            visualizer.latent_traversal(disc_idx=disc_idx)'''
 
 
     

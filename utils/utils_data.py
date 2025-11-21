@@ -264,29 +264,8 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     # Compute km driven
     df['km_driven'] = df['end_odo'] - df['odo']
     
-    '''# Compute speed
-    # Add avg_speed in km/h 
-    df['avg_speed'] = np.where(
-        df['duration_minutes'] > 0,
-        (df['end_odo'] - df['odo']) / (df['duration_minutes'] / 60),
-        0
-    )'''
     df['charge'] =  df['end_soc'] - df['soc']
-    '''
-    # discharge_per_km: only in trips
-    df['discharge_per_km'] = np.where(
-        (df['event'] == 'trip') & (df['km_driven'] != 0),
-        -df['charge'] / df['km_driven'],
-        0
-    )
     
-    # charge_per_min: only in charge events
-    df['charge_per_min'] = np.where(
-        (df['event'] == 'charge') & (df['duration_minutes'] != 0),
-        df['charge'] / df['duration_minutes'],
-        0
-    )'''
-
     #df["index"] = df.index
 
     # Drop original time columns
@@ -365,13 +344,8 @@ def preprocess_dataset(path, data_name, event=None, charge_mode=None):
     
     
     ######################## HANDLE MISSING VALUES ######################################
-    # Fill any remaining NaNs (e.g., missing soc values) ->  each missing value is replaced with the last non-missing value above it in the same column
-    #df = df.fillna(method='ffill')
-    
-    #OR
     # Drop rows with missing values
     df = df.dropna()
-    ######################## KEEP STUDYING THE BEST OPTION ##############################
 
     # Save the processed dataset
     file_path = os.path.join(output_dir, f'{data_name}_processed.csv')
@@ -468,11 +442,6 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                 self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])
 
                 # Do NOT mix the dataset
-                '''idx = torch.randperm(len(ori_seq_data))
-                for i in range(len(ori_seq_data)):
-                    self.original_sample.append(ori_seq_data[idx[i]])
-                orig_samples_np = np.array(self.original_sample)
-                self.X_mean = np.mean(orig_samples_np, axis=0).reshape(1, orig_samples_np.shape[1], orig_samples_np.shape[2])'''
 
                 generator = torch.Generator().manual_seed(SEED)
                 removed_points = torch.randperm(norm_data.shape[0], generator=generator)[
@@ -484,8 +453,7 @@ class TimeDataset_irregular(torch.utils.data.Dataset):
                     x = norm_data[i: i + seq_len]
                     seq_data.append(x)
                 self.samples = seq_data.copy()
-                '''for i in range(len(seq_data)):
-                    self.samples.append(seq_data[idx[i]])'''
+                
                 
                 # Save self.original_sample to CSV
                 original_reshaped = np.array(self.original_sample).reshape(-1, len(header))
