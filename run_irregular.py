@@ -7,6 +7,9 @@ import random
 import argparse
 import pandas as pd
 import json
+from datetime import datetime
+import pytz
+
 
 import os, sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -364,4 +367,13 @@ def main(args):
 
 
 if __name__ == '__main__':
+    italy_tz = pytz.timezone("Europe/Rome")
+    start_time = datetime.now(italy_tz)
+    print(f"🟢 Execution started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
     main(args)
+
+    end_time = datetime.now(italy_tz)
+    print(f"🔵 Execution finished at: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏱ Total execution time: {end_time - start_time}")
+
